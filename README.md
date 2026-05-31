@@ -11,6 +11,7 @@
 - [Installation and Setup](#installation-and-setup)
 - [Running the GUI](#running-the-gui)
 - [Training and Evaluating the ML Model](#training-and-evaluating-the-ml-model)
+- [Curved Surface and STL Support](#curved-surface-and-stl-support)
 - [Data Visualization](#data-visualization)
 - [Testing](#testing)
 - [License](#license)
@@ -22,9 +23,9 @@ Shot peening is a manufacturing process used to improve material properties by b
 - Rapidly iterate on shot peening parameters.
 - Compare multiple recipes without running time-consuming simulations.
 - Visualize predicted outcomes and analyze their effects on component geometry.
+- Apply predictions to arbitrary 3D curved surfaces from STL files.
 
 ![Shotpeening_brief](https://raw.githubusercontent.com/onestr1/peen-ml/refs/heads/main/images/what_is_shotpeen.png)
-
 
 This project was developed as part of the CSE 583 Software Development for Data Scientists course at the University of Washington, aiming to demonstrate best practices in code organization, testing, documentation, and continuous integration.
 
@@ -32,227 +33,294 @@ This project was developed as part of the CSE 583 Software Development for Data 
 To ensure clean and maintainable code, we have followed **PEP 8** guidelines and linted the code to the best of our ability. However, we decided to relax the line length limitations to maintain code readability and logical flow where necessary.
 
 ### Replication
-This repository includes resources to replicate experiments and demonstrate functionality:  
-- **Demo Simulations:** The `tests/simulation_0` directory contains a sample simulation that can be used to explore and validate the repository’s workflows.  
-- **Full Dataset Training:** For generating complete datasets, use the provided Abaqus scripts in `dataset1_script.py` and `dataset2_script.py`. These scripts facilitate dataset creation for model training.  
+This repository includes resources to replicate experiments and demonstrate functionality:
+- **Demo Simulations:** The `tests/simulation_0` directory contains a sample simulation that can be used to explore and validate the repository's workflows.
+- **Built-in Simulator:** Use `native_dataset_gen.py` to generate training datasets entirely in Python — no Abaqus licence required.
+- **Legacy Abaqus Scripts:** `dataset1_script.py` and `dataset2_script.py` are retained for reproducibility but are not required for normal use.
 
-**Note:** The Abaqus scripts are provided solely for reproducibility purposes and have not been linted or formatted for PEP 8 compliance. They serve as supplementary tools and do not impact the repository’s primary functionality.
+**Note:** The Abaqus scripts are provided solely for reproducibility purposes and have not been linted or formatted for PEP 8 compliance.
 
 ## Key Features
-- **GUI for Ease of Use**: A graphical user interface (`shotpeen_gui.py`) to train models and load existing ones without requiring deep ML expertise.
-- **ML-Based Prediction Engine**: A CNN-based model (with attention mechanisms) that predicts deformation from shot peening recipes and geometry (`model.py`).
-- **Data Visualization Tools**: Scripts (`data_viz.py`) to visualize checkerboard patterns, stress fields, and deformation magnitudes, aiding in interpretation and analysis.
-- **Modular Architecture**: Separate modules for input data handling, visualization, prediction, and storage, supporting extensibility and maintenance.
-- **Comparison and Analysis**: Tools to compare deformation predictions across multiple shot peening recipes, helping users find optimal process parameters.
-- **Continuous Integration**: A GitHub Actions workflow for style checking (`.github/workflows/pylint.yml`).
+- **GUI for Ease of Use**: A graphical user interface (`shotpeen_gui.py`) to generate datasets, train models, and evaluate predictions without requiring deep ML expertise.
+- **Built-in Physics Simulator**: A Python-native multi-shot simulation engine (`multi_shot_sim.py`, `native_dataset_gen.py`) based on the Shen & Atluri impact model — eliminates the Abaqus dependency entirely.
+- **Two ML Architectures**:
+  - *DisplacementPredictor* — CNN with channel and spatial attention, dense FC output.
+  - *ConvDecoderPredictor* — Same encoder but a convolutional decoder that predicts a full spatial displacement field. **178× fewer parameters** and evaluates at any mesh resolution without retraining.
+- **Curved Surface / STL Support**: Full inference pipeline for arbitrary 3D shells loaded from STL files, including nozzle trajectory planning (raster, spiral, zigzag or custom waypoints) and per-vertex normal-frame rotation of predicted displacements.
+- **Three-Layer Mesh Interpolation**:
+  - *Layer 1* — Bilinear resize of checkerboard to match trained grid size.
+  - *Layer 2* — Thin-plate-spline RBF interpolation from training mesh to evaluation mesh (FC model), or exact bilinear sampling (convolutional decoder).
+  - *Layer 3* — Rodrigues rotation of flat-plate predictions into local STL surface normals.
+- **Data Visualization Tools**: 2D mesh plots (`data_viz.py`) and 3D STL surface plots (`visualize_stl_deformation`, `visualize_stl_stress`) with Matplotlib.
+- **Modular Architecture**: Separate modules for simulation, STL geometry, trajectory generation, ML models, visualization, and the GUI.
+- **Continuous Integration**: GitHub Actions workflow for style checking (`.github/workflows/pylint.yml`).
 
 ## Repository Structure
 ```
 [Repository Root]
 ├─ .github/
 │  └─ workflows/
-│     └─ pylint.yml          # CI pipeline (Pylint checks)
+│     └─ pylint.yml                  # CI pipeline (Pylint checks)
 ├─ blueprint/
-│  ├─ Components.md          # Description of system components
+│  ├─ Components.md
 │  ├─ Describing_a_usecase.md
 │  └─ User_story.md
 ├─ dataset_sample/
-│  ├─ dataset1_sample.rar    # Sample dataset files (for demonstration)
+│  ├─ dataset1_sample.rar
 │  ├─ dataset2_sample.rar
 │  └─ readme.txt.txt
 ├─ src/
 │  └─ peen-ml/
-│     ├─ data_viz.py         # Visualization tools
-│     ├─ dataset1_script.py  # Script to generate dataset1
-│     ├─ dataset2_script.py  # Script to generate dataset2
-│     ├─ model.py            # ML model definition, training & evaluation
-│     ├─ model_notebook_v2.ipynb  # Model evaluation & results 
-│     └─ model_notebook_v3.ipynb  # Model evaluation & results
+│     ├─ model.py                    # ML models, training & evaluation
+│     ├─ data_viz.py                 # 2D/3D visualization tools
+│     ├─ multi_shot_sim.py           # Python-native shot peening simulator
+│     ├─ native_dataset_gen.py       # Dataset generator (no Abaqus needed)
+│     ├─ gaussian_nozzle_dataset_gen.py  # Gaussian nozzle profile generator
+│     ├─ impact_sim.py               # Per-impact stress/displacement model
+│     ├─ stl_surface.py              # STL geometry: normals, KDTree, checkerboard
+│     ├─ nozzle_trajectory.py        # Nozzle scan patterns & waypoint loading
+│     ├─ curved_surface_sim.py       # Physics simulation on curved STL surfaces
+│     ├─ dataset1_script.py          # Legacy Abaqus dataset script
+│     ├─ dataset2_script.py          # Legacy Abaqus dataset script
+│     ├─ model_notebook_v2.ipynb
+│     └─ model_notebook_v3.ipynb
 ├─ tests/
-│  ├─ simulation_0           # Example Data for Test cases
-│  ├─ simulation_1           # Example Data for Test cases
-│  ├─ test_Shotpeen_Gui.py   # GUI tests
-│  ├─ test_data_viz.py       # Visualization tests
-│  └─ test_model.py          # Model tests
+│  ├─ simulation_0/                  # Example data for test cases
+│  ├─ simulation_1/                  # Example data for test cases
+│  ├─ test_Shotpeen_Gui.py           # GUI tests
+│  ├─ test_data_viz.py               # Visualization tests
+│  ├─ test_model.py                  # Model training, evaluation & interpolation tests
+│  ├─ test_stl_surface.py            # STLSurface geometry tests
+│  ├─ test_nozzle_trajectory.py      # Trajectory generation tests
+│  └─ test_curved_surface_sim.py     # Curved surface simulation tests
 ├─ .gitignore
 ├─ LICENSE
-├─ README.md                 # This README file
-├─ pyproject.toml            # Project configuration & dependencies
-└─ shotpeen_gui.py           # Main GUI application
+├─ README.md
+├─ pyproject.toml
+└─ shotpeen_gui.py                   # Main GUI application
 ```
 
 ## Core Components
 
-- **Data Input Module** (in `shotpeen_gui.py` and `src/peen-ml/` scripts):  
-  Collects geometry and shot peening parameters, validates data, and feeds it into the ML model.
+- **Physics Simulation Engine** (`multi_shot_sim.py`, `native_dataset_gen.py`, `impact_sim.py`):
+  Python-native multi-shot simulation based on the Shen & Atluri elastic-plastic impact model. Generates training datasets (~2 s/simulation) without any FEA software.
 
-- **Prediction Engine (ML Model)** (in `model.py`):  
-  A CNN with attention mechanisms to predict deformation from input parameters. Trained on historical or simulated FEA data, it approximates deformation outcomes quickly.
+- **Curved Surface Simulator** (`curved_surface_sim.py`, `stl_surface.py`, `nozzle_trajectory.py`):
+  Extends the flat-plate simulator to arbitrary 3D shells. Load an STL file, define a nozzle scan trajectory (parametric or from a CSV/npy waypoint file), and accumulate per-vertex displacements and residual stresses accounting for local surface normals.
 
-- **Visualization Module** (in `data_viz.py`):  
-  Tools to visualize mesh deformation, stress fields, and checkerboard patterns. Helps engineers understand the predicted outcomes intuitively.
+- **Prediction Engine** (`model.py`):
+  Two architectures share the same encoder (3 conv + attention blocks):
+  - *DisplacementPredictor* — flattens to `Linear(512, N×3)`. Simple but node-count fixed.
+  - *ConvDecoderPredictor* — decodes to a `(3, H, W)` spatial field, then bilinearly samples at any node coordinates. Node count never appears in model parameters; works on any mesh without retraining.
 
-- **Recipe & Result Storage**:  
-  Enables saving shot peening recipes and predictions for future retrieval and analysis.
+- **Three-Layer Inference Pipeline** (`model.py`):
+  `curved_surface_inference()` and `load_and_evaluate_model_gui()` automatically apply:
+  1. Grid resize (Layer 1) — handles checkerboard resolution mismatch.
+  2. Spatial interpolation to evaluation mesh (Layer 2) — RBF for FC model, bilinear sampling for ConvDecoder.
+  3. Normal-frame rotation (Layer 3) — rotates flat-plate predictions into per-vertex STL surface normals.
 
-- **Comparison & Analysis Module** (future add-on):  
-  Allows side-by-side comparison of multiple shot peening recipes to identify the most effective parameters.
+- **Visualization Module** (`data_viz.py`):
+  - `visualize_checkerboard` — shot coverage heatmap.
+  - `visualize_mesh` / `visualize_deformation` — 2D undeformed/deformed FEA mesh.
+  - `visualize_stl_deformation` — 3D Poly3DCollection surface coloured by displacement magnitude.
+  - `visualize_stl_stress` — 3D surface coloured by von Mises stress.
 
-- **Alert & Reporting System** (future add-on):  
-  Intended to notify users when predicted deformation exceeds thresholds and to generate reports for quality control.
+- **GUI** (`shotpeen_gui.py`):
+  Three tabs: *Generate Dataset*, *Train Model*, *Load & Evaluate*. The evaluate tab includes an optional **Curved Surface & Nozzle Trajectory** section for STL-based inference.
 
 ## User Roles and Use Cases
-Usecases and users that this was created for and defined in `blueprint/`:
+Use cases and users are defined in `blueprint/`:
 
 - **Mechanical Engineer (Alex)**: Inputs geometry and recipe parameters, quickly gets deformation predictions.
 - **Process Engineer (Jordan)**: Compares multiple recipes to find optimal shot peening settings.
-- **Quality Control Engineer (Taylor)**: Validates predicted results against actual deformation data, refining the model over time.
-- **Data Scientist (Sam)**: Improves ML models by experimenting with algorithms and leveraging stored datasets.
-
-Typical uses include:  
-- **Input Shot Peening Recipe and Geometry**: Load CAD files and shot parameters to generate predictions.  
-- **Predict and Visualize Deformation**: Instantly see deformation overlays on a 3D model.  
-- **Compare Recipes**: Evaluate which shot peening parameters yield the desired deformation efficiently.  
-- **Store and Retrieve Historical Data**: Build a knowledge base of recipes and predictions to inform future decisions.
+- **Quality Control Engineer (Taylor)**: Validates predicted results against actual deformation data.
+- **Data Scientist (Sam)**: Experiments with ML architectures and generates new training datasets.
 
 ## Installation and Setup
 **Prerequisites:**
-- Python 3.7–3.12
+- Python 3.8–3.12
 - Git
 - (Optional) Conda for environment management
-- requests 2.25.1+
-- numpy 1.20.0+
-- matplotlib 3.4.0+
-- pandas 1.3.0+
-- torch 1.9.0+
-- tinker
-- pillow
+
+**Dependencies:**
+```
+numpy >= 1.20.0
+matplotlib >= 3.4.0
+torch >= 2.0.0
+scipy >= 1.7.0
+trimesh
+pillow
+tkinter  (usually bundled with Python)
+```
 
 **Steps:**
-1. **Clone the Repository:**
+
+1. **Clone the repository:**
    ```bash
-   git clone SSH
+   git clone https://github.com/onestr1/peen-ml.git
+   cd peen-ml
    ```
 
-2. **Create and Activate a Virtual Environment (Recommended):**
+2. **Create and activate a virtual environment (recommended):**
    ```bash
-   python3 -m venv venv
-   source venv/bin/activate
+   python -m venv venv
+   source venv/bin/activate        # macOS/Linux
+   venv\Scripts\activate           # Windows
    ```
 
-3. **Install Dependencies:**
-
-   Directly via pyproject.toml using `pip` (make sure this is run within peen-ml):
+3. **Install dependencies:**
    ```bash
    pip install .
+   pip install trimesh              # STL support (not in pyproject.toml yet)
    ```
-   
-   **Dependencies include:**  
-   - `requests>=2.25.1`  
-   - `numpy>=1.20.0`  
-   - `matplotlib>=3.4.0`  
-   - `pandas>=1.3.0`  
-   - `torch>=1.9.0`  
-   - `pillow`  
-   - `tkinter` (usually comes with Python, but may need separate installation on some systems)
 
 ## Running the GUI
-The GUI (`shotpeen_gui.py`) provides an accessible interface for training new models and loading existing ones.
-![Gui_Main_Menu](https://raw.githubusercontent.com/onestr1/peen-ml/refs/heads/main/images/gui_main_menu.png)
-
-**Launch the GUI:**
-
-All the commands are launched from the root directory `~/peen-ml$`
 ```bash
 python shotpeen_gui.py
 ```
 
-**Features via GUI:**
-- **Train Model**:  
-  Opens a dialog to select training and testing data, shows a training log, and displays a progress bar.
-  
-- **Load Model**:  
-  Opens a dialog to load existing models and step files for review.
-  
+![Gui_Main_Menu](https://raw.githubusercontent.com/onestr1/peen-ml/refs/heads/main/images/gui_main_menu.png)
+
+**Tabs:**
+- **Generate Dataset** — run the built-in physics simulator to produce a training dataset (no Abaqus needed).
+- **Train Model** — select a dataset folder; the model architecture and node count are auto-detected.
+- **Load & Evaluate** — load a trained model, select an evaluation simulation, set an output path, and click *Evaluate Model*. Optionally supply an STL file and nozzle trajectory for curved-surface prediction.
 
 ## Training and Evaluating the ML Model
-The ML workflow is defined in `src/peen-ml/model.py`:
 
-1. **Prepare Data**:  
-   Place your simulation data (`.npy` files) into a structured directory (e.g., `Dataset1_Random_Board` with `Simulation_0`, `Simulation_1`, etc.).
+### Generating a dataset
+```bash
+python src/peen-ml/native_dataset_gen.py   # creates Dataset_Python/ with 200 simulations
+```
+Each `Simulation_N/` folder contains `checkerboard.npy`, `displacements.npy`, `node_coords.npy`, and supporting mesh arrays.
 
-2. **Train Model or Load Existing Model via the GUI**:
-    <img src="https://raw.githubusercontent.com/onestr1/peen-ml/refs/heads/main/images/train_model_page.png" alt="Train Model" width="400">
-    <img src="https://raw.githubusercontent.com/onestr1/peen-ml/refs/heads/main/images/load_model_page.png" alt="Load Model" width="400">
+### Training via GUI
+<img src="https://raw.githubusercontent.com/onestr1/peen-ml/refs/heads/main/images/train_model_page.png" alt="Train Model" width="400">
 
-   Starting from the Main menu you can either train a new model or load a pre-existing model:
-   - To train a model: 
-      - Click on Train model. This will open a new window.
-      - In the new window click on  the Browse button to search for the folder where your simulations reside.
-      - Plese wait a while for the training to complete, the progress bar and the text box will keep you informed on the progress(Pending)
-   - To load a trained or prexisting model and Evaluate it.
-      - Click on Load model. This too will open a new window. 
-      - In this new window click on the Brows button beside the "Model File" indication to select a prexisting model.
-      - After which you can find a shot peen profile you would like evaluated in the next browse button.
-      - Select where you would like your results to live in the Output path.
-      You can see a preview of your desired profile using the preview button, and a preview of the resiltant stresses, in the button next to it.
-   - do the other thing
+1. Open the **Train Model** tab and browse to your dataset folder.
+2. Click **Train**. Grid size and node count are inferred automatically.
+3. The trained model and `reference_node_coords.npy` are saved to `<dataset>/saved_model/`.
 
-3. **Evaluate the Model**:
-   After training, the script evaluates the model on the test set, reporting MSE and sMAPE metrics.
+### Training the convolutional decoder (programmatic)
+```python
+from model import train_save_conv_gui
+train_save_conv_gui("Dataset_Python", epochs=50)
+# Saves to Dataset_Python/saved_model_conv/trained_conv_decoder_full_model.pth
+```
+
+### Architecture comparison
+
+| | DisplacementPredictor | ConvDecoderPredictor |
+|---|---|---|
+| Output | `Linear(512, N×3)` | `(3, H, W)` field + bilinear sample |
+| Parameters (N=2601, G=20) | 30 M | 170 K |
+| GPU memory (weights + Adam) | ~364 MB | ~2 MB |
+| Node-count fixed | Yes — retrain for new mesh | No — sample at any coordinates |
+| STL inference (Layer 2) | RBF interpolation | Exact bilinear sampling |
+
+### Evaluating via GUI
+<img src="https://raw.githubusercontent.com/onestr1/peen-ml/refs/heads/main/images/load_model_page.png" alt="Load Model" width="400">
+
+1. Open the **Load & Evaluate** tab.
+2. Browse to the `.pth` model file and a `Simulation_N/` eval folder.
+3. Set the output path and click **Evaluate Model**.
+4. Click **Preview Deformation** to view the predicted displacement field.
+
+## Curved Surface and STL Support
+
+The pipeline supports inference on arbitrary 3D shell geometries:
+
+### Programmatic usage
+```python
+from model import curved_surface_inference
+from nozzle_trajectory import ScanParams, raster_scan
+
+traj = raster_scan(ScanParams(
+    Lx=0.05, Ly=0.05, z_standoff=0.15,
+    scan_speed=0.02, line_spacing=0.005, dt=0.1,
+))
+
+result = curved_surface_inference(
+    model_path="Dataset_Python/saved_model_conv/trained_conv_decoder_full_model.pth",
+    stl_path="my_part.stl",
+    trajectory_or_checkerboard=traj,
+    G=20,
+    pred_save_dir="output/",
+)
+# result keys: displacements_on_stl (V,3), vertex_normals (V,3), checkerboard (G,G)
+```
+
+### Nozzle trajectory patterns
+| Pattern | Function |
+|---|---|
+| Raster scan | `raster_scan(ScanParams(...))` |
+| Spiral scan | `spiral_scan(ScanParams(...))` |
+| Zigzag scan | `zigzag_scan(ScanParams(...))` |
+| From CSV | `from_csv("waypoints.csv")` |
+| From .npy | `from_npy("waypoints.npy")` |
+
+### GUI usage
+In the **Load & Evaluate** tab, expand the **Optional — Curved Surface & Nozzle Trajectory** section:
+1. Browse to an STL file.
+2. Choose *Parametric scan* (select pattern, set speed/spacing/standoff) or *Waypoint file* (CSV or .npy).
+3. Click **Evaluate Model** — inference runs the full three-layer pipeline automatically.
+4. Click **Preview STL Deformation** to view the 3D coloured surface.
 
 ## Data Visualization
-`data_viz.py` provides functions to visualize checkerboard patterns, stress fields, and deformation fields. These functions are called in 'shotpeen_gui.py' to display the results of the trained model or the checkerboard pattern intensity.
-A sample usage of the data visualization functions is shown below. You can run the `main()` script in `data_viz.py` for a demo:
+`data_viz.py` provides functions called from the GUI and usable standalone:
+
 ```bash
-python src/peen-ml/data_viz.py
+python src/peen-ml/data_viz.py   # demo run
 ```
-This generates plots for:
-- Checkerboard patterns of expansion coefficients.
-- Undeformed vs. Deformed meshes.
-- Stress fields (e.g., von Mises stress).
-- Deformation magnitudes.
+
+Generates plots for:
+- Checkerboard patterns (shot coverage heatmap).
+- Undeformed vs. deformed FEA mesh.
+- Deformation magnitude on deformed mesh.
+- 3D STL surface coloured by displacement magnitude (`visualize_stl_deformation`).
+- 3D STL surface coloured by von Mises stress (`visualize_stl_stress`).
 
 ## Testing
-Tests are located in the `tests/` directory and can be run using `pytest` or `unittest`.
+Tests are in the `tests/` directory and cover the full stack.
 
-**Run Tests:**
 ```bash
-pytest tests
+pytest tests/
 ```
 
-This includes:
-- `test_Shotpeen_Gui.py`: Tests GUI functionality.
-- `test_data_viz.py`: Tests data visualization utilities.
-- `test_model.py`: Tests model loading, training, and evaluation functionalities.
+| Test file | What it covers |
+|---|---|
+| `test_model.py` | Model creation, training, evaluation, Layer 1/2 interpolation, batch-dim correctness |
+| `test_Shotpeen_Gui.py` | GUI widget construction and callback wiring |
+| `test_data_viz.py` | Visualization utility functions |
+| `test_stl_surface.py` | STL loading, vertex normals, shot projection, checkerboard building |
+| `test_nozzle_trajectory.py` | Raster/spiral/zigzag scan coverage, CSV/npy round-trips |
+| `test_curved_surface_sim.py` | Curved simulation on flat STL, flat-plate equivalence |
 
 ## License
 This project is licensed under the [MIT License](LICENSE).
 
 ## Authors
-- [Onest Rexhepi](mailto:onestr@uw.edu)  
-  *Contributions:*  
-  - Established and managed the GitHub repository, including all documentation and replication workflows.  
-  - Generated data for both datasets utilized by the model.  
-  - Designed and implemented data visualizations scripts for model inputs and outputs that were integrated into the GUI.  
+- [Onest Rexhepi](mailto:onestr@uw.edu)
+  *Contributions:*
+  - Established and managed the GitHub repository, including all documentation and replication workflows.
+  - Generated data for both datasets utilized by the model.
+  - Designed and implemented data visualization scripts integrated into the GUI.
 
-- [Harshavardhan Sameer Raje](mailto:harshr@uw.edu)  
-  *Contributions:*  
-  - Developed the graphical user interface (GUI) to ensure user-friendly interaction with the model.  
-  - Integrated the GUI with backend scripts for training and visualization.
-  - Linting and code coverage efforts  
+- [Harshavardhan Sameer Raje](mailto:harshr@uw.edu)
+  *Contributions:*
+  - Developed the graphical user interface (GUI) for user-friendly interaction with the model.
+  - Integrated the GUI with backend scripts for training, simulation, and visualization.
+  - Extended the pipeline with STL curved-surface support, nozzle trajectory planning, the convolutional decoder architecture, and the three-layer mesh interpolation system.
+  - Linting and code coverage efforts.
 
-- [Jiachen Zhong](mailto:jczhong@uw.edu)  
-  *Contributions:*  
-  - Designed and implemented the CNN model architecture for deformation prediction.  
-  - Optimized the model pipeline for efficient training and inference.  
+- [Jiachen Zhong](mailto:jczhong@uw.edu)
+  *Contributions:*
+  - Designed and implemented the CNN model architecture for deformation prediction.
+  - Optimized the model pipeline for efficient training and inference.
 
-- [Xuanyu Shen](mailto:xshen20@uw.edu)  
-  *Contributions:*  
-  - Developed test cases to ensure functionality and reliability of scripts and models.  
-
-
-
+- [Xuanyu Shen](mailto:xshen20@uw.edu)
+  *Contributions:*
+  - Developed test cases to ensure functionality and reliability of scripts and models.
 
 ## Acknowledgments
 - University of Washington CSE 583 course staff for guidance on best practices in software development for data scientists.
