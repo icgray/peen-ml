@@ -1,0 +1,10 @@
+n_shots: 104
+distribution: checkerboard
+coverage_fraction: 0.8981593856815462
+coverage_percent: 89.81593856815462
+coverage_fraction_nodes: 0.1114955786236063
+n_peened: 290
+n_total: 2601
+avrami_k: 0.02196486819768248
+threshold_m: 6.400133326163569e-06
+almen_intensity_MPa: -4313.012

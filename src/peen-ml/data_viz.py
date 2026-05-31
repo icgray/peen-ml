@@ -306,3 +306,116 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ---------------------------------------------------------------------------
+# 3D STL surface visualisation
+# ---------------------------------------------------------------------------
+
+def visualize_stl_deformation(stl_surface, displacements, colormap="plasma",
+                              scale_factor=1.0, show=True):
+    """Render deformation magnitude on a 3D STL surface as a colour map.
+
+    Parameters
+    ----------
+    stl_surface   : STLSurface instance (from stl_surface.py).
+    displacements : (V, 3) float array of nodal displacements [ux, uy, uz].
+    colormap      : matplotlib colormap name (default 'plasma').
+    scale_factor  : Displacement exaggeration factor for visualisation.
+    show          : Call plt.show() when True.
+
+    Returns
+    -------
+    fig : matplotlib Figure
+    """
+    from mpl_toolkits.mplot3d import Axes3D    # noqa: F401
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+    vertices      = stl_surface.vertices.astype(np.float64)
+    disp          = np.asarray(displacements, dtype=np.float64)
+    deformed      = vertices + scale_factor * disp
+    magnitude     = np.linalg.norm(disp, axis=1)
+
+    # Per-face colour = mean magnitude of its 3 vertices
+    face_mag = magnitude[stl_surface.faces].mean(axis=1)
+    norm_mag = (face_mag - face_mag.min()) / ((face_mag.max() - face_mag.min()) + 1e-15)
+
+    cmap       = plt.get_cmap(colormap)
+    face_color = cmap(norm_mag)
+
+    tri_verts = deformed[stl_surface.faces]    # (F, 3, 3)
+    poly      = Poly3DCollection(tri_verts, facecolors=face_color,
+                                 edgecolors="none", alpha=0.9)
+
+    fig = plt.figure(figsize=(10, 7))
+    ax  = fig.add_subplot(111, projection="3d")
+    ax.add_collection3d(poly)
+
+    # Set axis limits to deformed bounding box
+    for i, lbl in enumerate(["X", "Y", "Z"]):
+        lo, hi = deformed[:, i].min(), deformed[:, i].max()
+        pad    = (hi - lo) * 0.05 + 1e-9
+        getattr(ax, f"set_{lbl.lower()}lim")(lo - pad, hi + pad)
+        getattr(ax, f"set_{lbl.lower()}label")(lbl)
+
+    sm  = plt.cm.ScalarMappable(cmap=cmap,
+                                norm=plt.Normalize(face_mag.min(), face_mag.max()))
+    sm.set_array([])
+    fig.colorbar(sm, ax=ax, label="Displacement magnitude (m)", shrink=0.6)
+    ax.set_title(f"STL Deformation  (scale × {scale_factor})")
+
+    if show:
+        plt.show()
+    return fig
+
+
+def visualize_stl_stress(stl_surface, stresses_per_face, colormap="jet",
+                         show=True):
+    """Render von Mises stress on a 3D STL surface.
+
+    Parameters
+    ----------
+    stl_surface      : STLSurface instance.
+    stresses_per_face: (F, 4) float array [S11, S22, S33, S12] per triangle.
+    colormap         : matplotlib colormap name (default 'jet').
+    show             : Call plt.show() when True.
+
+    Returns
+    -------
+    fig : matplotlib Figure
+    """
+    from mpl_toolkits.mplot3d import Axes3D    # noqa: F401
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+    s = np.asarray(stresses_per_face, dtype=np.float64)
+    S11, S22, S33, S12 = s[:, 0], s[:, 1], s[:, 2], s[:, 3]
+    von_mises = np.sqrt(S11**2 - S11 * S22 + S22**2 + 3.0 * S12**2)
+
+    norm_vm    = (von_mises - von_mises.min()) / ((von_mises.max() - von_mises.min()) + 1e-15)
+    cmap       = plt.get_cmap(colormap)
+    face_color = cmap(norm_vm)
+
+    vertices  = stl_surface.vertices.astype(np.float64)
+    tri_verts = vertices[stl_surface.faces]
+    poly      = Poly3DCollection(tri_verts, facecolors=face_color,
+                                 edgecolors="none", alpha=0.9)
+
+    fig = plt.figure(figsize=(10, 7))
+    ax  = fig.add_subplot(111, projection="3d")
+    ax.add_collection3d(poly)
+
+    for i, lbl in enumerate(["X", "Y", "Z"]):
+        lo, hi = vertices[:, i].min(), vertices[:, i].max()
+        pad    = (hi - lo) * 0.05 + 1e-9
+        getattr(ax, f"set_{lbl.lower()}lim")(lo - pad, hi + pad)
+        getattr(ax, f"set_{lbl.lower()}label")(lbl)
+
+    sm  = plt.cm.ScalarMappable(cmap=cmap,
+                                norm=plt.Normalize(von_mises.min(), von_mises.max()))
+    sm.set_array([])
+    fig.colorbar(sm, ax=ax, label="von Mises stress (Pa)", shrink=0.6)
+    ax.set_title("STL Residual Stress Field")
+
+    if show:
+        plt.show()
+    return fig

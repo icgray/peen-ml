@@ -81,3 +81,7 @@ $RECYCLE.BIN/
 *.sqlite
 *.sqlite3
 *.bak
+Dataset_Gaussian*/
+Dataset_small/
+Test_part*/
+*.pth

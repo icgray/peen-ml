@@ -1,0 +1,14 @@
+sim_index:      240
+generator:      native_dataset_gen.py (Shen & Atluri 2006)
+V_m_per_s:      48.069
+D_mm:           0.3103
+sigma_yield_MPa:247.9
+n_shots:        70
+distribution:   checkerboard
+pattern_mode:   gradient
+Lx_mm:          10.0
+Ly_mm:          10.0
+Nx:             50
+Ny:             50
+coverage_pct:   26.62
+almen_MPa:      -1972.47

@@ -1,0 +1,10 @@
+n_shots: 50
+distribution: poisson
+coverage_fraction: 0.3148776737296489
+coverage_percent: 31.487767372964893
+coverage_fraction_nodes: 0.014994232987312572
+n_peened: 39
+n_total: 2601
+avrami_k: 0.007563157563325812
+threshold_m: 3.773108856862175e-06
+almen_intensity_MPa: -1949.924
