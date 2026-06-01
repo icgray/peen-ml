@@ -36,10 +36,21 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple
 
 import numpy as np
+
+_SRC = os.path.dirname(os.path.abspath(__file__))
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
+
+try:
+    from materials import WORKPIECE_MATERIALS, SHOT_MATERIALS  # noqa: F401
+except ImportError:
+    WORKPIECE_MATERIALS = {}
+    SHOT_MATERIALS = {}
 
 # ---------------------------------------------------------------------------
 # Public API

@@ -87,6 +87,12 @@ from multi_shot_sim import (                   # noqa: E402
     MultiShotParams,
     run_multi_shot_simulation,
 )
+from materials import (                        # noqa: E402
+    get_workpiece,
+    get_shot,
+    WORKPIECE_MATERIALS,
+    SHOT_MATERIALS,
+)
 
 __all__ = ["GeneratorParams", "generate_dataset", "generate_single_simulation"]
 
@@ -172,6 +178,19 @@ class GeneratorParams:
     # Reproducibility
     base_seed: int = 0
 
+    # Material selection — named preset from materials.py (empty = use defaults)
+    workpiece_material: str = ""   # e.g. "Ti-6Al-4V", "316L-SS", "Al-7075-T6"
+    shot_material:      str = ""   # e.g. "steel", "ceramic", "glass"
+
+    # Manual overrides (only applied when the corresponding material str is "custom")
+    E_b:          Optional[float] = None   # workpiece Young's modulus (Pa)
+    nu_b:         Optional[float] = None   # workpiece Poisson's ratio
+    sigma_yield:  Optional[float] = None   # workpiece yield stress (Pa)
+    c:            Optional[float] = None   # workpiece hardening modulus (Pa)
+    E_s:          Optional[float] = None   # shot Young's modulus (Pa)
+    nu_s:         Optional[float] = None   # shot Poisson's ratio
+    rho_s:        Optional[float] = None   # shot density (kg/m³)
+
 
 # ---------------------------------------------------------------------------
 # 2.  Checkerboard pattern generators
@@ -245,6 +264,74 @@ def _make_checkerboard(
 
 
 # ---------------------------------------------------------------------------
+# 2b.  Material resolution helpers
+# ---------------------------------------------------------------------------
+
+def _resolve_workpiece(gp: GeneratorParams) -> Dict:
+    """Return resolved workpiece property dict for this GeneratorParams.
+
+    Priority:
+      1. Named preset (gp.workpiece_material non-empty and in library)
+      2. Manual overrides (gp.E_b, gp.nu_b, etc.)
+      3. ShotPeenParams dataclass defaults
+    """
+    from impact_sim import ShotPeenParams as _SP
+    _defaults = _SP()
+    base: Dict = {
+        "E_b":           _defaults.E_b,
+        "nu_b":          _defaults.nu_b,
+        "sigma_yield":   _defaults.sigma_yield,
+        "c":             _defaults.c,
+        "source":        "ShotPeenParams defaults",
+    }
+    if gp.workpiece_material and gp.workpiece_material != "custom":
+        try:
+            lib = get_workpiece(gp.workpiece_material)
+            base = {
+                "E_b":         lib["E"],
+                "nu_b":        lib["nu"],
+                "sigma_yield": lib["sigma_yield"],
+                "c":           lib["c"],
+                "source":      lib["source"],
+            }
+        except KeyError:
+            pass  # unknown name → keep defaults
+    # Apply manual overrides
+    if gp.E_b is not None:           base["E_b"]         = gp.E_b
+    if gp.nu_b is not None:          base["nu_b"]        = gp.nu_b
+    if gp.sigma_yield is not None:   base["sigma_yield"] = gp.sigma_yield
+    if gp.c is not None:             base["c"]           = gp.c
+    return base
+
+
+def _resolve_shot(gp: GeneratorParams) -> Dict:
+    """Return resolved shot property dict for this GeneratorParams."""
+    from impact_sim import ShotPeenParams as _SP
+    _defaults = _SP()
+    base: Dict = {
+        "E_s":    _defaults.E_s,
+        "nu_s":   _defaults.nu_s,
+        "rho_s":  _defaults.rho_s,
+        "source": "ShotPeenParams defaults",
+    }
+    if gp.shot_material and gp.shot_material != "custom":
+        try:
+            lib = get_shot(gp.shot_material)
+            base = {
+                "E_s":    lib["E_s"],
+                "nu_s":   lib["nu_s"],
+                "rho_s":  lib["rho_s"],
+                "source": lib["source"],
+            }
+        except KeyError:
+            pass
+    if gp.E_s is not None:   base["E_s"]   = gp.E_s
+    if gp.nu_s is not None:  base["nu_s"]  = gp.nu_s
+    if gp.rho_s is not None: base["rho_s"] = gp.rho_s
+    return base
+
+
+# ---------------------------------------------------------------------------
 # 3.  Single-simulation runner (called by parallel workers)
 # ---------------------------------------------------------------------------
 
@@ -271,10 +358,17 @@ def generate_single_simulation(
 
     out_folder = os.path.join(gen_params.output_dir, f"Simulation_{sim_index}")
 
+    # ---- Resolve material properties ----
+    wp_props = _resolve_workpiece(gen_params)
+    sp_props = _resolve_shot(gen_params)
+    wp_name   = gen_params.workpiece_material or "default"
+    sp_name   = gen_params.shot_material or "default"
+
     # ---- Draw randomised physics ----
     V  = float(rng.uniform(*gen_params.V_range))
     D  = float(rng.uniform(*gen_params.D_range))
-    sy = float(rng.uniform(*gen_params.sy_range))
+    # sigma_yield: use material library value if available, else random sweep
+    sy = float(wp_props["sigma_yield"]) if wp_props.get("sigma_yield") is not None and gen_params.workpiece_material else float(rng.uniform(*gen_params.sy_range))
     n_shots = int(rng.integers(gen_params.n_shots_range[0],
                                gen_params.n_shots_range[1] + 1))
 
@@ -295,6 +389,8 @@ def generate_single_simulation(
     # ---- Build ShotPeenParams ----
     bp = ShotPeenParams(
         V=V, D=D, sigma_yield=sy,
+        E_b=wp_props["E_b"], nu_b=wp_props["nu_b"], c=wp_props["c"],
+        E_s=sp_props["E_s"], nu_s=sp_props["nu_s"], rho_s=sp_props["rho_s"],
         n_depth=5000,            # coarser depth resolution for speed
     )
 
@@ -323,7 +419,7 @@ def generate_single_simulation(
 
         # Write a plain-text metadata file for traceability
         _write_metadata(out_folder, sim_index, gen_params, bp, msp,
-                        pattern_mode, results)
+                        pattern_mode, results, wp_name, sp_name, wp_props, sp_props)
 
         elapsed = time.perf_counter() - t0
         return {
@@ -361,6 +457,10 @@ def _write_metadata(
     msp: MultiShotParams,
     pattern_mode: str,
     results: Dict,
+    wp_name: str = "default",
+    sp_name: str = "default",
+    wp_props: Optional[Dict] = None,
+    sp_props: Optional[Dict] = None,
 ) -> None:
     path = os.path.join(out_folder, "simulation_params.txt")
     with open(path, "w") as fh:
@@ -378,6 +478,19 @@ def _write_metadata(
         fh.write(f"Ny:             {gp.Ny}\n")
         fh.write(f"coverage_pct:   {results['coverage']['coverage_percent']:.2f}\n")
         fh.write(f"almen_MPa:      {results['almen_intensity_MPa']:.2f}\n")
+        # Material block — parsed by model.py for material-conditioned training
+        fh.write(f"[material]\n")
+        fh.write(f"workpiece       = {wp_name}\n")
+        fh.write(f"E_b             = {bp.E_b:.6e}\n")
+        fh.write(f"nu_b            = {bp.nu_b:.6f}\n")
+        fh.write(f"sigma_yield     = {bp.sigma_yield:.6e}\n")
+        fh.write(f"c               = {bp.c:.6e}\n")
+        fh.write(f"workpiece_source = {(wp_props or {}).get('source', 'default')}\n")
+        fh.write(f"shot            = {sp_name}\n")
+        fh.write(f"rho_s           = {bp.rho_s:.6f}\n")
+        fh.write(f"E_s             = {bp.E_s:.6e}\n")
+        fh.write(f"nu_s            = {bp.nu_s:.6f}\n")
+        fh.write(f"shot_source     = {(sp_props or {}).get('source', 'default')}\n")
 
 
 # ---------------------------------------------------------------------------
@@ -620,6 +733,29 @@ if __name__ == "__main__":
                         help="Checkerboard grid resolution (G×G)")
     parser.add_argument("--validate", action="store_true",
                         help="Run validation checks after generation")
+
+    # Material selection
+    parser.add_argument("--workpiece_material", default="",
+                        choices=[""] + sorted(WORKPIECE_MATERIALS) + ["custom"],
+                        metavar="NAME",
+                        help=("Named workpiece material from library "
+                              f"({', '.join(sorted(WORKPIECE_MATERIALS))}) "
+                              "or 'custom' to use --E_b/--nu_b/etc. overrides. "
+                              "Default: ShotPeenParams built-in values."))
+    parser.add_argument("--shot_material", default="",
+                        choices=[""] + sorted(SHOT_MATERIALS) + ["custom"],
+                        metavar="NAME",
+                        help=("Named shot material from library "
+                              f"({', '.join(sorted(SHOT_MATERIALS))}) "
+                              "or 'custom'. Default: ShotPeenParams built-in values."))
+    parser.add_argument("--E_b",         type=float, default=None, help="Override workpiece E (Pa)")
+    parser.add_argument("--nu_b",        type=float, default=None, help="Override workpiece nu")
+    parser.add_argument("--sigma_yield", type=float, default=None, help="Override workpiece sigma_yield (Pa); disables sy_range sweep")
+    parser.add_argument("--c",           type=float, default=None, help="Override workpiece hardening c (Pa)")
+    parser.add_argument("--E_s",         type=float, default=None, help="Override shot E (Pa)")
+    parser.add_argument("--nu_s",        type=float, default=None, help="Override shot nu")
+    parser.add_argument("--rho_s",       type=float, default=None, help="Override shot density (kg/m³)")
+
     args = parser.parse_args()
 
     gp = GeneratorParams(
@@ -634,6 +770,10 @@ if __name__ == "__main__":
         D_range=(args.D_min, args.D_max),
         n_shots_range=(args.n_shots_min, args.n_shots_max),
         checkerboard_size=args.grid_size,
+        workpiece_material=args.workpiece_material,
+        shot_material=args.shot_material,
+        E_b=args.E_b, nu_b=args.nu_b, sigma_yield=args.sigma_yield, c=args.c,
+        E_s=args.E_s, nu_s=args.nu_s, rho_s=args.rho_s,
     )
 
     generate_dataset(gp, verbose=True)

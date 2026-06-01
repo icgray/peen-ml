@@ -532,3 +532,124 @@ class TestPredSavedAs2D:
         assert pred.ndim == 2, (
             f"load_and_evaluate_model_gui must save 2-D predictions, got {pred.shape}"
         )
+
+
+# ===========================================================================
+# 14. AMP + gradient accumulation in train_model
+# ===========================================================================
+
+class TestAMP:
+    def _make_loaders(self, tiny_dataset, batch_size=15):
+        train, val, _, _ = M.create_data_loaders(str(tiny_dataset),
+                                                  batch_size=batch_size)
+        return train, val
+
+    def test_train_model_with_amp(self, tiny_dataset):
+        """use_amp=True runs and returns finite losses (no-op on CPU)."""
+        m     = M.create_model(1, SYN_NODES, SYN_G)
+        train, val = self._make_loaders(tiny_dataset)
+        crit  = nn.MSELoss()
+        opt   = torch.optim.Adam(m.parameters(), lr=1e-3)
+        sched = torch.optim.lr_scheduler.StepLR(opt, step_size=2, gamma=0.5)
+        tloss, vloss = M.train_model(m, train, val, crit, opt, sched,
+                                     epochs=2, patience=5, use_amp=True)
+        assert all(np.isfinite(l) for l in tloss)
+        assert all(np.isfinite(l) for l in vloss)
+
+    def test_accum_steps(self, tiny_dataset):
+        """accum_steps=2 with batch_size=1 runs without error."""
+        m     = M.create_model(1, SYN_NODES, SYN_G)
+        train, val = self._make_loaders(tiny_dataset, batch_size=1)
+        crit  = nn.MSELoss()
+        opt   = torch.optim.Adam(m.parameters(), lr=1e-3)
+        sched = torch.optim.lr_scheduler.StepLR(opt, step_size=2, gamma=0.5)
+        tloss, _ = M.train_model(m, train, val, crit, opt, sched,
+                                  epochs=1, patience=5, accum_steps=2)
+        assert len(tloss) == 1
+        assert np.isfinite(tloss[0])
+
+    def test_accum_steps_with_amp(self, tiny_dataset):
+        """AMP + gradient accumulation combined — no assertion errors, finite losses."""
+        m     = M.create_model(1, SYN_NODES, SYN_G)
+        train, val = self._make_loaders(tiny_dataset, batch_size=1)
+        crit  = nn.MSELoss()
+        opt   = torch.optim.Adam(m.parameters(), lr=1e-3)
+        sched = torch.optim.lr_scheduler.StepLR(opt, step_size=2, gamma=0.5)
+        tloss, _ = M.train_model(m, train, val, crit, opt, sched,
+                                  epochs=2, patience=5, use_amp=True, accum_steps=2)
+        assert all(np.isfinite(l) for l in tloss)
+
+
+# ===========================================================================
+# 15. SIRENPredictor forward pass and resolution-invariance
+# ===========================================================================
+
+class TestSIRENPredictor:
+    def test_output_shape(self):
+        """forward(B,1,G,G) + (K,2) coords -> (B,K,3)."""
+        model  = M.SIRENPredictor(input_channels=1, latent_dim=32,
+                                   hidden=64, n_layers=2)
+        B, G, K = 2, SYN_G, 16
+        cb     = torch.zeros(B, 1, G, G)
+        coords = torch.rand(K, 2)
+        with torch.no_grad():
+            out = model(cb, coords)
+        assert out.shape == (B, K, 3)
+
+    def test_no_nan_5_epochs(self, tiny_dataset):
+        """Training for 5 epochs produces finite loss at every step."""
+        train_loader, _, _, _ = M.create_siren_loaders(
+            str(tiny_dataset), k_nodes=16, batch_size=4
+        )
+        model  = M.SIRENPredictor(input_channels=1, latent_dim=32,
+                                   hidden=64, n_layers=2)
+        device = torch.device('cpu')
+        opt    = torch.optim.Adam(model.parameters(), lr=1e-3)
+        crit   = nn.MSELoss()
+        for _ in range(5):
+            model.train()
+            for cbs, coords, disps in train_loader:
+                opt.zero_grad()
+                pred = model(cbs.to(device), coords.to(device))
+                loss = crit(pred, disps.to(device))
+                loss.backward()
+                opt.step()
+                assert np.isfinite(loss.item()), "Loss became NaN during SIREN training"
+
+    def test_resolution_invariant(self):
+        """Same model handles different K values (resolution-free inference)."""
+        model = M.SIRENPredictor(input_channels=1, latent_dim=32,
+                                  hidden=64, n_layers=2)
+        cb = torch.zeros(1, 1, SYN_G, SYN_G)
+        for K in [8, 64, 256]:
+            coords = torch.rand(K, 2)
+            with torch.no_grad():
+                out = model(cb, coords)
+            assert out.shape == (1, K, 3), \
+                f"Expected (1,{K},3) but got {out.shape}"
+
+
+# ===========================================================================
+# 16. SIREN data loaders
+# ===========================================================================
+
+class TestSIRENLoaders:
+    def test_loader_shapes(self, tiny_dataset):
+        """create_siren_loaders returns (K,2) coords and (B,K,3) displacements."""
+        train, _, _, N_total = M.create_siren_loaders(
+            str(tiny_dataset), k_nodes=16, batch_size=4
+        )
+        cbs, coords, disps = next(iter(train))
+        assert cbs.ndim == 4 and cbs.shape[1] == 1, "checkerboard shape must be (B,1,G,G)"
+        assert coords.shape == (16, 2),              "coords must be (K, 2)"
+        assert disps.ndim == 3 and disps.shape[2] == 3, "disps must be (B, K, 3)"
+        assert N_total == SYN_NODES
+
+    def test_different_k_nodes(self, tiny_dataset):
+        """k_nodes parameter controls the subsampled coord count."""
+        train, _, _, _ = M.create_siren_loaders(
+            str(tiny_dataset), k_nodes=8, batch_size=4
+        )
+        _, coords, disps = next(iter(train))
+        assert coords.shape[0] == 8
+        assert disps.shape[1] == 8

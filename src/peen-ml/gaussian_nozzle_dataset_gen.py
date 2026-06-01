@@ -124,29 +124,23 @@ from impact_sim import (           # noqa: E402
     map_stresses,
 )
 from multi_shot_sim import compute_coverage   # noqa: E402
+from materials import (                       # noqa: E402
+    SHOT_MATERIALS,
+    WORKPIECE_MATERIALS,
+    get_shot,
+    get_workpiece,
+)
 
 __all__ = [
     "GaussianNozzleParams",
     "SHOT_MATERIALS",
+    "WORKPIECE_MATERIALS",
     "sample_gaussian_nozzle_shots",
     "gaussian_density_checkerboard",
     "run_gaussian_nozzle_simulation",
     "generate_gaussian_dataset",
     "validate_gaussian_dataset",
 ]
-
-
-# ---------------------------------------------------------------------------
-# 1.  Predefined shot materials
-# ---------------------------------------------------------------------------
-
-SHOT_MATERIALS: Dict[str, Dict[str, float]] = {
-    # Material   : { rho_s (kg/m³), E_s (Pa), nu_s }
-    "steel":     {"rho_s": 7800.0, "E_s": 210e9, "nu_s": 0.30},
-    "ceramic":   {"rho_s": 6000.0, "E_s": 380e9, "nu_s": 0.22},
-    "glass":     {"rho_s": 2500.0, "E_s":  70e9, "nu_s": 0.22},
-    "cast_iron": {"rho_s": 7300.0, "E_s": 170e9, "nu_s": 0.26},
-}
 
 
 # ---------------------------------------------------------------------------

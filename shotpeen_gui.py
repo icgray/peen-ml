@@ -43,7 +43,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'src', 'peen-ml'))
 # Deviating from PEP8 to make sure that this script can call the backend
 from model import train_model, create_data_loaders, create_model  # pylint: disable=wrong-import-position
 from model import train_save_gui, infer_dataset_shape              # pylint: disable=wrong-import-position
+from model import train_save_conv_gui, train_save_siren_gui        # pylint: disable=wrong-import-position
 from model import load_and_evaluate_model_gui                      # pylint: disable=wrong-import-position
+from model import load_and_evaluate_siren_gui                      # pylint: disable=wrong-import-position
 from model import curved_surface_inference                         # pylint: disable=wrong-import-position
 from data_viz import visualize_checkerboard, visualize_all         # pylint: disable=wrong-import-position
 try:
@@ -606,6 +608,32 @@ class App:
         _lbl("Velocity min", 7, 3); _ent(V_min_var, 7, 4); _unit("m/s", 7, 5)
         _lbl("Velocity max", 8, 3); _ent(V_max_var, 8, 4); _unit("m/s", 8, 5)
 
+        # ---- Material selectors ----
+        try:
+            from materials import WORKPIECE_MATERIALS, SHOT_MATERIALS as _SM
+            _wp_names = [""] + sorted(WORKPIECE_MATERIALS.keys())
+            _sp_names = [""] + sorted(_SM.keys())
+        except ImportError:
+            _wp_names = [""]
+            _sp_names = [""]
+
+        mat_frame = ttk.LabelFrame(pf, text="  Material (optional — leave blank for defaults)  ", padding=(6, 4))
+        mat_frame.grid(row=9, column=0, columnspan=6, sticky="ew", pady=(6, 2))
+
+        wp_mat_var = tk.StringVar(value="")
+        sp_mat_var = tk.StringVar(value="")
+
+        tk.Label(mat_frame, text="Workpiece", font=BODY_FONT, anchor="e").grid(
+            row=0, column=0, sticky="e", padx=(6, 4))
+        ttk.Combobox(mat_frame, textvariable=wp_mat_var, values=_wp_names,
+                     width=18, state="readonly").grid(row=0, column=1, sticky="w")
+        tk.Label(mat_frame, text="Shot", font=BODY_FONT, anchor="e").grid(
+            row=0, column=2, sticky="e", padx=(16, 4))
+        ttk.Combobox(mat_frame, textvariable=sp_mat_var, values=_sp_names,
+                     width=18, state="readonly").grid(row=0, column=3, sticky="w")
+        tk.Label(mat_frame, text="(logged to simulation_params.txt; enables material-conditioned training)",
+                 font=HINT_FONT, fg=HINT_COLOR).grid(row=1, column=0, columnspan=4, sticky="w", padx=4)
+
         # ---- Buttons + progress ----
         btn_frame = tk.Frame(parent)
         btn_frame.grid(row=3, column=0, sticky="ew", pady=(0, 6))
@@ -649,7 +677,7 @@ class App:
             Ly = float(Ly_var.get()) / 1000.0
             D_min = float(D_min_var.get()) / 1000.0
             D_max = float(D_max_var.get()) / 1000.0
-            return [
+            args = [
                 "--output",       out_var.get(),
                 "--n_sims",       n_sims_var.get(),
                 "--workers",      workers_var.get(),
@@ -664,6 +692,11 @@ class App:
                 "--V_min",        V_min_var.get(),
                 "--V_max",        V_max_var.get(),
             ]
+            if wp_mat_var.get():
+                args += ["--workpiece_material", wp_mat_var.get()]
+            if sp_mat_var.get():
+                args += ["--shot_material", sp_mat_var.get()]
+            return args
 
         self._wire_generator(
             dialog, script, _collect_args,
@@ -1126,22 +1159,45 @@ class App:
         data_folder_var.trace_add("write", _update_shape)
 
         # ======================================================
+        # STEP 2b — Choose Architecture
+        # ======================================================
+        sec_arch = _section(
+            outer, row=5,
+            title="Step 2b  —  Choose Model Architecture",
+            tooltip=(
+                "FC (Legacy): original model, Linear(512, N×3) output.  OOM at N > 100K.\n\n"
+                "Conv Decoder: 170K params, convolutional decoder, node-count-agnostic.\n"
+                "  AMP + gradient accumulation auto-enabled for grids > 256×256.\n\n"
+                "SIREN / INR: implicit neural field — O(K) GPU memory regardless of mesh\n"
+                "  size.  Trains on K=512 randomly-sampled nodes per step, evaluates at\n"
+                "  any resolution including 1001×1001 (1M nodes) without OOM."
+            ),
+        )
+        model_type_var = tk.StringVar(value="conv")
+        for _val, _lbl in [
+            ("fc",    "FC — Legacy  (OOM at N > 100K)"),
+            ("conv",  "Convolutional Decoder  [recommended]"),
+            ("siren", "SIREN / INR  [large meshes, memory-safe]"),
+        ]:
+            tk.Radiobutton(
+                sec_arch, text=_lbl, variable=model_type_var, value=_val,
+                font=HINT_FONT,
+            ).grid(sticky="w", padx=12, pady=2)
+
+        # ======================================================
         # STEP 3 — Train
         # ======================================================
         sec3 = _section(
-            outer, row=5,
+            outer, row=6,
             title="Step 3  —  Train the Model",
             tooltip=(
                 "Click 'Train' to start.  Training runs in the background so the\n"
                 "window stays responsive while epochs complete.\n\n"
-                "Settings (configured in model.py):\n"
-                "  Max epochs : 10\n"
-                "  Early stopping patience : 5 epochs\n"
-                "  Optimiser  : Adam (lr=0.001, weight_decay=1e-5)\n"
-                "  Scheduler  : StepLR (step=2, gamma=0.5)\n\n"
+                "Settings depend on the chosen architecture (see Step 2b).\n\n"
                 "Saved to:\n"
-                "  <dataset_folder>/saved_model/\n"
-                "      trained_displacement_predictor_full_model.pth\n\n"
+                "  FC:    <dataset_folder>/saved_model/\n"
+                "  Conv:  <dataset_folder>/saved_model_conv/\n"
+                "  SIREN: <dataset_folder>/saved_model_siren/\n\n"
                 "Keep the .pth file — you will need it in the 'Load Model' screen."
             ),
         )
@@ -1168,7 +1224,7 @@ class App:
         # STEP 4 — Monitor progress
         # ======================================================
         sec4 = _section(
-            outer, row=6,
+            outer, row=7,
             title="Step 4  —  Monitor Training Progress",
             tooltip=(
                 "The log below updates as each epoch completes, showing:\n"
@@ -1270,23 +1326,29 @@ class App:
                 """
                 Worker function executed in the background daemon thread.
 
-                Calls train_save_gui() (which is blocking) then updates the UI
-                via _log_write.  The try/except/finally ensures the progress bar
-                always stops and the Train button is re-enabled, even if training
-                raises an exception.
+                Dispatches to the selected architecture's train_save_*_gui()
+                function.  The try/except/finally ensures the progress bar
+                always stops and the Train button is re-enabled.
                 """
+                arch = model_type_var.get()
                 try:
-                    train_save_gui(folder)
-                    # Build the expected save path to show the user exactly where to find it.
-                    save_path = os.path.join(
-                        folder, "saved_model",
-                        "trained_displacement_predictor_full_model.pth"
-                    )
+                    if arch == "fc":
+                        train_save_gui(folder)
+                        save_subdir = "saved_model"
+                        model_file  = "trained_displacement_predictor_full_model.pth"
+                    elif arch == "conv":
+                        train_save_conv_gui(folder)
+                        save_subdir = "saved_model_conv"
+                        model_file  = "trained_conv_decoder_full_model.pth"
+                    else:  # siren
+                        train_save_siren_gui(folder)
+                        save_subdir = "saved_model_siren"
+                        model_file  = "trained_siren_full_model.pth"
+
+                    save_path = os.path.join(folder, save_subdir, model_file)
                     _log_write("\nTraining complete!")
                     _log_write(f"Model saved to:\n  {save_path}")
-                    plot_path = os.path.join(
-                        folder, "saved_model", "training_loss_curve.png"
-                    )
+                    plot_path = os.path.join(folder, save_subdir, "training_loss_curve.png")
                     if os.path.exists(plot_path):
                         _log_write(f"Loss curve: {plot_path}")
                         dialog.after(0, lambda: _show_plot(plot_path))
@@ -1495,10 +1557,80 @@ class App:
         ).grid(row=0, column=1)
 
         # ======================================================
+        # OPTIONAL — Material Selection (inference conditioning)
+        # ======================================================
+        sec_mat = _section(
+            outer, row=6,
+            title="Optional  —  Material Properties for Inference",
+            tooltip=(
+                "Select the workpiece and shot materials used during shot peening.\n\n"
+                "Only applies to material-conditioned models (trained with\n"
+                "use_material=True / mat_dim=7).  Standard models ignore these\n"
+                "selections — leave blank and they will be silently skipped.\n\n"
+                "Workpiece: the part being peened (e.g. 316L-SS, Ti-6Al-4V).\n"
+                "Shot:      the peening media (e.g. ceramic, steel).\n\n"
+                "Leave both blank to use the model's built-in defaults."
+            ),
+        )
+
+        try:
+            from materials import WORKPIECE_MATERIALS as _WPM, SHOT_MATERIALS as _SPM
+            from model import normalize_mat_features, MAT_FEATURE_KEYS
+            _infer_wp_names = [""] + sorted(_WPM.keys())
+            _infer_sp_names = [""] + sorted(_SPM.keys())
+        except ImportError:
+            _WPM = {}
+            _SPM = {}
+            _infer_wp_names = [""]
+            _infer_sp_names = [""]
+
+        infer_wp_var = tk.StringVar(value="")
+        infer_sp_var = tk.StringVar(value="")
+
+        mat_row = tk.Frame(sec_mat)
+        mat_row.grid(row=1, column=0, columnspan=3, sticky="w", pady=(4, 2))
+
+        tk.Label(mat_row, text="Workpiece:", font=BODY_FONT, anchor="e").pack(side="left", padx=(6, 4))
+        ttk.Combobox(mat_row, textvariable=infer_wp_var, values=_infer_wp_names,
+                     width=18, state="readonly").pack(side="left")
+        tk.Label(mat_row, text="  Shot:", font=BODY_FONT, anchor="e").pack(side="left", padx=(16, 4))
+        ttk.Combobox(mat_row, textvariable=infer_sp_var, values=_infer_sp_names,
+                     width=18, state="readonly").pack(side="left")
+
+        tk.Label(
+            sec_mat,
+            text="(only used by material-conditioned models; ignored otherwise)",
+            font=HINT_FONT, fg=HINT_COLOR,
+        ).grid(row=2, column=0, columnspan=3, sticky="w", padx=6, pady=(0, 4))
+
+        def _build_mat_features():
+            """Return a normalised (7,) ndarray, or None if no materials selected."""
+            wp_name = infer_wp_var.get().strip()
+            sp_name = infer_sp_var.get().strip()
+            if not wp_name and not sp_name:
+                return None
+            try:
+                import numpy as _np
+                from materials import get_workpiece, get_shot
+                from model import normalize_mat_features as _norm, MAT_FEATURE_KEYS as _KEYS
+                wp = get_workpiece(wp_name) if wp_name else {
+                    "E": 113.8e9, "nu": 0.342, "sigma_yield": 880e6, "c": 3.0e9}
+                sp = get_shot(sp_name) if sp_name else {
+                    "rho_s": 7800.0, "E_s": 210e9, "nu_s": 0.30}
+                raw = _np.array([
+                    wp["E"], wp["nu"], wp["sigma_yield"], wp["c"],
+                    sp["E_s"], sp["nu_s"], sp["rho_s"],
+                ], dtype=_np.float32)
+                return _norm(raw)
+            except Exception as _e:
+                print(f"[Material] Could not build feature vector: {_e}")
+                return None
+
+        # ======================================================
         # OPTIONAL — Curved Surface + Nozzle Trajectory
         # ======================================================
         sec_curved = _section(
-            outer, row=6,
+            outer, row=7,
             title="Optional  —  Curved Surface & Nozzle Trajectory",
             tooltip=(
                 "Supply an STL file to predict deformation on a 3D curved surface\n"
@@ -1605,7 +1737,7 @@ class App:
         # STEP 4 — Run evaluation and visualise results
         # ======================================================
         sec4 = _section(
-            outer, row=7,
+            outer, row=8,
             title="Step 4  —  Evaluate the Model & Visualise Results",
             tooltip=(
                 "Run the buttons in order:\n\n"
@@ -1696,6 +1828,7 @@ class App:
                     model_file_var.get(),
                     checkerboard_folder_var.get(),
                     output_path_var.get(),
+                    mat_features=_build_mat_features(),
                 )
 
         tk.Button(

@@ -215,6 +215,166 @@ Dataset_Gaussian_2601 train/val/test split (seed=2024) before considering it an 
 
 ---
 
+## Material Properties — GUI, Dataset Generation, and Inference
+
+**Priority: High** (impacts simulation accuracy more than architecture choice)
+
+### Problem
+
+Material properties are largely hardcoded and invisible to the user.  Changing
+the shot or workpiece material changes every number the physics engine produces —
+yet there is no UI surface for it and no link to trusted property sources.
+
+**Current state by location:**
+
+| Where | Shot properties | Workpiece properties | GUI-exposed? |
+|---|---|---|---|
+| `impact_sim.py:96–105` (`ShotPeenParams`) | `E_s=210e9, nu_s=0.30, rho_s=7800` (steel) | `E_b=113.8e9, nu_b=0.34, sigma_yield=276e6, c=3e9` (Ti-6Al-4V) | **No** |
+| `multi_shot_sim.py:129` (`MultiShotParams`) | via `base_params` (ShotPeenParams) | same | **No** |
+| `curved_surface_sim.py:149–153` (`CurvedSurfaceSimParams`) | `shot_material="steel", D=0.0005` | same Ti-6Al-4V defaults | **No** |
+| `native_dataset_gen.py` | randomises V, D only | yield stress range 200–400 MPa | V, D via GUI |
+| `gaussian_nozzle_dataset_gen.py:231–233` | 4 shot types (dict) | yield range 200–800 MPa | **No** |
+| `shotpeen_gui.py` | V, D sliders only | nothing | partially |
+
+The four shot-material dicts in `gaussian_nozzle_dataset_gen.py:143–149`
+(`SHOT_MATERIALS`) are the only structured property store in the codebase.
+Everything else is a scalar literal.
+
+---
+
+### What to build
+
+#### 7a. In-code material property library
+
+Create `src/peen-ml/materials.py` with a `MATERIALS` dict covering both shot
+and workpiece types.  Each entry should include provenance (source URL/DOI):
+
+```python
+WORKPIECE_MATERIALS = {
+    "Ti-6Al-4V":    {"E": 113.8e9, "nu": 0.34, "sigma_yield": 880e6, "c": 3.0e9,
+                     "source": "MatWeb / Granta MI — AMS 4928"},
+    "316L-SS":      {"E": 193e9,   "nu": 0.27, "sigma_yield": 170e6, "c": 5.0e9,
+                     "source": "NIST SRD 171 / Matweb"},
+    "4340-Steel":   {"E": 205e9,   "nu": 0.29, "sigma_yield": 470e6, "c": 7.0e9,
+                     "source": "ASM Handbook vol 2"},
+    "Al-7075-T6":   {"E":  71.7e9, "nu": 0.33, "sigma_yield": 503e6, "c": 2.5e9,
+                     "source": "MIL-HDBK-5J / MMPDS"},
+    "Inconel-718":  {"E": 200e9,   "nu": 0.29, "sigma_yield": 1034e6,"c": 8.0e9,
+                     "source": "Special Metals datasheet"},
+}
+
+SHOT_MATERIALS = {                        # ← move from gaussian_nozzle_dataset_gen.py
+    "steel":     {"rho_s": 7800, "E_s": 210e9, "nu_s": 0.30,
+                  "source": "ISO 11124-2 / SAE J827"},
+    "ceramic":   {"rho_s": 6000, "E_s": 380e9, "nu_s": 0.22,
+                  "source": "CoorsTek ZrO2 datasheet"},
+    "glass":     {"rho_s": 2500, "E_s":  70e9, "nu_s": 0.22,
+                  "source": "ASTM B851 / Potters Industries"},
+    "cast_iron": {"rho_s": 7300, "E_s": 170e9, "nu_s": 0.26,
+                  "source": "ASM Handbook vol 1"},
+}
+```
+
+Open-source / freely accessible property databases to draw from:
+- **[MatWeb](https://www.matweb.com)** — free searchable database, 175 000+ alloys
+- **[NIST SRD 171 (Structural Materials)](https://www.nist.gov/srd/nist-standard-reference-database-171)** — Fe, Ni, Ti alloys with uncertainty bounds
+- **[MMPDS / MIL-HDBK-5J](https://www.metallic-materials.net)** — aerospace-grade handbook values (public USAF data)
+- **[ASM Handbook (public abstracts)](https://www.asminternational.org)** — citation-quality sources per alloy
+- **[OpenAlloy](https://openalloy.org)** (community effort) — CC-licensed property records
+- **[Springer Materials (open access tier)](https://materials.springer.com)** — DOI-linked property records
+
+Each entry in `MATERIALS` must include a `"source"` string so that:
+1. Users can verify the value before a production run
+2. The provenance is logged in `simulation_params.txt` automatically
+
+#### 7b. GUI material selector — Generate tabs
+
+In `shotpeen_gui.py`, in both the Native and Gaussian Nozzle generator dialogs,
+add a `ttk.LabelFrame` "Material Properties" section with:
+
+- **Shot material** — `ttk.Combobox` populated from `SHOT_MATERIALS.keys()`
+  (default: `"steel"`).  On selection, display `E_s`, `nu_s`, `rho_s`, and the
+  source string in a read-only label beneath.
+- **Workpiece material** — `ttk.Combobox` from `WORKPIECE_MATERIALS.keys()`
+  (default: `"Ti-6Al-4V"`).  Display `E`, `nu`, `sigma_yield`, `c`, and source.
+- **"Custom…" option** in both combos — expands text fields allowing the user to
+  enter arbitrary values (with a visible warning: "Custom values have no
+  provenance check").
+
+Pass the selected material to the generator CLI/Python call so material
+identity ends up in `simulation_params.txt`.
+
+#### 7c. GUI material selector — Inference tab
+
+In the Curved Surface Inference tab (Load Model dialog), show the same
+two material combos.  The chosen properties are forwarded to
+`CurvedSurfaceSimParams` (or the equivalent SIREN path) so the inference
+simulation uses physically correct contact mechanics rather than the
+hardcoded Ti-6Al-4V defaults.
+
+#### 7d. Native dataset generator: propagate material CLI args
+
+Add to `native_dataset_gen.py`:
+```
+--workpiece_material  [name from WORKPIECE_MATERIALS or "custom"]
+--E_b FLOAT           # override Young's modulus (Pa)
+--nu_b FLOAT          # override Poisson's ratio
+--sigma_yield FLOAT   # override yield stress (Pa)
+--c FLOAT             # override bilinear hardening modulus (Pa)
+--shot_material       [name from SHOT_MATERIALS or "custom"]
+--E_s FLOAT  --nu_s FLOAT  --rho_s FLOAT
+```
+
+If `--workpiece_material` is a named entry, load from `MATERIALS` dict.
+If `"custom"`, require all four override flags.
+All resolved values logged to `simulation_params.txt`.
+
+#### 7e. Output: `simulation_params.txt` must log material provenance
+
+Each simulation folder already writes `simulation_params.txt`.  Extend it to
+include the resolved material block:
+```
+workpiece_material : Ti-6Al-4V
+  E_b              : 113800000000 Pa
+  nu_b             : 0.34
+  sigma_yield      : 880000000 Pa
+  c                : 3000000000 Pa
+  source           : MatWeb / Granta MI — AMS 4928
+shot_material      : steel
+  E_s              : 210000000000 Pa
+  nu_s             : 0.30
+  rho_s            : 7800 kg/m³
+  source           : ISO 11124-2 / SAE J827
+```
+
+---
+
+### Files to create / modify
+
+| File | Change |
+|---|---|
+| `src/peen-ml/materials.py` | **Create** — `WORKPIECE_MATERIALS`, `SHOT_MATERIALS` dicts with provenance |
+| `src/peen-ml/impact_sim.py` | Import from materials.py; `ShotPeenParams` defaults look up library |
+| `src/peen-ml/curved_surface_sim.py` | `CurvedSurfaceSimParams` defaults from library |
+| `src/peen-ml/native_dataset_gen.py` | Add `--workpiece_material` / `--shot_material` CLI args; log provenance |
+| `src/peen-ml/gaussian_nozzle_dataset_gen.py` | Replace local `SHOT_MATERIALS` dict with import from materials.py |
+| `shotpeen_gui.py` | Material combos in Generate tabs and Inference tab |
+| `tests/test_materials.py` | **Create** — verify all entries have required keys + valid value ranges |
+
+---
+
+### Testing checklist
+
+- [ ] `WORKPIECE_MATERIALS` and `SHOT_MATERIALS` each have `≥ 5` entries
+- [ ] Every entry has `E`, `nu`, `sigma_yield`/`E_s`/`nu_s`/`rho_s` and `source` keys
+- [ ] `source` string is non-empty for every entry (provenance required)
+- [ ] `simulation_params.txt` contains material section after dataset gen
+- [ ] GUI combo correctly populates from the dict at runtime
+- [ ] Selecting a different workpiece changes the output of `impact_sim.py`
+- [ ] Custom override values flow through without being overwritten by defaults
+
+---
+
 ## Testing Checklist for Each New Architecture
 
 - [ ] Forward pass produces correct output shape

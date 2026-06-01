@@ -28,11 +28,84 @@ from torch import nn, optim
 from torch.utils.data import Dataset, DataLoader, random_split
 import matplotlib.pyplot as plt
 
+# ---------------------------------------------------------------------------
+# Material feature utilities
+# ---------------------------------------------------------------------------
+
+MAT_FEATURE_KEYS = ["E_b", "nu_b", "sigma_yield", "c", "E_s", "nu_s", "rho_s"]
+MAT_DIM = 7
+
+# Fixed normalisation bounds — log10 for large-range columns, linear for nu
+# Order: [E_b, nu_b, sigma_yield, c, E_s, nu_s, rho_s]
+_MAT_LOG_IDX = [0, 2, 3, 4, 6]   # E_b, sigma_yield, c, E_s, rho_s
+_MAT_LIN_IDX = [1, 5]             # nu_b, nu_s
+_MAT_LO = np.array([10.85, 0.22, 8.44, 9.07, 10.85, 0.22, 3.30], dtype=np.float32)
+_MAT_HI = np.array([11.31, 0.45, 9.05, 9.61, 11.62, 0.35, 4.30], dtype=np.float32)
+
+
+def normalize_mat_features(raw: np.ndarray) -> np.ndarray:
+    """Normalise a (..., 7) material feature array to approximately [0, 1].
+
+    Log10 is applied to large-range columns (E, sigma_yield, c, E_s, rho_s)
+    before linear normalisation.  Bounds are set by the materials.py library
+    extremes, so no training-split fitting is required.
+    """
+    raw = np.asarray(raw, dtype=np.float32).copy()
+    for i in _MAT_LOG_IDX:
+        raw[..., i] = np.log10(np.maximum(raw[..., i], 1e-30))
+    return np.clip((raw - _MAT_LO) / (_MAT_HI - _MAT_LO + 1e-12), -0.5, 1.5).astype(np.float32)
+
+
+def _parse_material_block(sim_dir: str) -> Optional[dict]:
+    """Parse the [material] block in simulation_params.txt.
+
+    Returns a dict with keys matching MAT_FEATURE_KEYS, or None if the block
+    is absent (e.g. legacy datasets generated before material awareness).
+    """
+    params_path = os.path.join(sim_dir, "simulation_params.txt")
+    if not os.path.exists(params_path):
+        # Try nozzle_params.txt as fallback
+        params_path = os.path.join(sim_dir, "nozzle_params.txt")
+        if not os.path.exists(params_path):
+            return None
+
+    in_block = False
+    found: dict = {}
+    with open(params_path) as fh:
+        for line in fh:
+            line = line.strip()
+            if line == "[material]":
+                in_block = True
+                continue
+            if in_block:
+                if line.startswith("["):   # next section
+                    break
+                if "=" in line:
+                    key, _, val = line.partition("=")
+                    key = key.strip()
+                    val = val.strip()
+                    if key in ("E_b", "nu_b", "sigma_yield", "c", "E_s", "nu_s", "rho_s"):
+                        try:
+                            found[key] = float(val)
+                        except ValueError:
+                            pass
+    if len(found) == MAT_DIM:
+        return found
+    return None
+
+
+# Default material feature vector (ShotPeenParams defaults — used for legacy datasets)
+_DEFAULT_MAT_RAW = np.array(
+    [113.8e9, 0.34, 276e6, 3.0e9, 210e9, 0.30, 2000.0], dtype=np.float32
+)
+_DEFAULT_MAT_NORM = normalize_mat_features(_DEFAULT_MAT_RAW)
+
 
 # 1. Load All Numpy Files Function
 def load_all_npy_files(base_folder,
                         load_files=("checkerboard", "displacements"),
-                          skip_missing=True):
+                          skip_missing=True,
+                          load_material_features=False):
     """
     Load specified .npy files from multiple simulation folders.
 
@@ -56,6 +129,7 @@ def load_all_npy_files(base_folder,
 
     # Initialize dictionaries to store data
     data_dict = {key: [] for key in load_files}
+    mat_list = [] if load_material_features else None
 
     for simulation_folder in simulation_folders:
         simulation_path = os.path.join(base_folder, simulation_folder)
@@ -74,6 +148,14 @@ def load_all_npy_files(base_folder,
                 else:
                     raise FileNotFoundError(f"{file_name.capitalize()} File not found in {simulation_folder}!")
 
+        if load_material_features:
+            mat_raw = _parse_material_block(simulation_path)
+            if mat_raw is not None:
+                raw_vec = np.array([mat_raw[k] for k in MAT_FEATURE_KEYS], dtype=np.float32)
+                mat_list.append(normalize_mat_features(raw_vec))
+            else:
+                mat_list.append(_DEFAULT_MAT_NORM.copy())
+
     # Stack data from all simulations along a new axis
     stacked_data = {}
     for key, data_list in data_dict.items():
@@ -81,6 +163,9 @@ def load_all_npy_files(base_folder,
             stacked_data[key] = np.stack(data_list)  # Stack along a new axis
         else:
             stacked_data[key] = None  # No data loaded for this key
+
+    if load_material_features and mat_list:
+        stacked_data["material_features"] = np.stack(mat_list)  # (N, 7)
 
     print("All specified data loaded and stacked successfully!")
     return stacked_data
@@ -93,15 +178,12 @@ class CheckerboardDataset(Dataset):
     Args:
         checkerboards (numpy array): Array of checkerboard patterns (batch_size, height, width).
         displacements (numpy array): Array of displacements (batch_size, num_nodes, 3).
+        mat_features  (numpy array | None): Optional (batch_size, 7) normalised material features.
     """
-    def __init__(self, checkerboards, displacements):
-        """
-        Args:
-            checkerboards (numpy array): Array of checkerboard patterns (batch_size, height, width).
-            displacements (numpy array): Array of displacements (batch_size, num_nodes, 3).
-        """
+    def __init__(self, checkerboards, displacements, mat_features=None):
         self.checkerboards = checkerboards
         self.displacements = displacements
+        self.mat_features  = mat_features  # (N, 7) float32 or None
 
     def __len__(self):
         """Returns the total number of samples in the dataset."""
@@ -111,19 +193,16 @@ class CheckerboardDataset(Dataset):
         """
         Retrieves a sample by index.
 
-        Args:
-            idx (int): Index of the sample.
-
         Returns:
-            tuple: A tuple containing the checkerboard tensor and the displacement tensor.
+            (checkerboard, displacement) when mat_features is None,
+            (checkerboard, mat_features, displacement) otherwise.
         """
-        checkerboard = self.checkerboards[idx]
-        displacement = self.displacements[idx]
+        checkerboard = torch.tensor(self.checkerboards[idx], dtype=torch.float32).unsqueeze(0)
+        displacement = torch.tensor(self.displacements[idx], dtype=torch.float32)
 
-        # Add a channel dimension to checkerboard (1 channel) to match with CNN expectations
-        checkerboard = torch.tensor(checkerboard, dtype=torch.float32).unsqueeze(0)  # (1, height, width)
-        displacement = torch.tensor(displacement, dtype=torch.float32)  # (num_nodes, 3)
-
+        if self.mat_features is not None:
+            mat = torch.tensor(self.mat_features[idx], dtype=torch.float32)
+            return checkerboard, mat, displacement
         return checkerboard, displacement
 
 class NormalizedDataset(Dataset):
@@ -135,9 +214,11 @@ class NormalizedDataset(Dataset):
     """
     def __init__(self, base_dataset):
         self.base_dataset = base_dataset
-        self.checkerboards = torch.cat([data[0] for data in base_dataset], dim=0)  # Collect all checkerboards
+        self.checkerboards = torch.cat([data[0] for data in base_dataset], dim=0)
         self.min_val = self.checkerboards.min()
         self.max_val = self.checkerboards.max()
+        # Detect if this dataset has material features (3-tuple items)
+        self._has_mat = len(base_dataset[0]) == 3
 
     def __len__(self):
         """Returns the total number of samples in the dataset."""
@@ -153,7 +234,12 @@ class NormalizedDataset(Dataset):
         Returns:
             tuple: A tuple containing the normalized checkerboard tensor and the displacement tensor.
         """
-        checkerboard, displacement = self.base_dataset[idx]
+        item = self.base_dataset[idx]
+        if self._has_mat:
+            checkerboard, mat, displacement = item
+            normalized_checkerboard = (checkerboard - self.min_val) / (self.max_val - self.min_val)
+            return normalized_checkerboard, mat, displacement
+        checkerboard, displacement = item
         normalized_checkerboard = (checkerboard - self.min_val) / (self.max_val - self.min_val)
         return normalized_checkerboard, displacement
 
@@ -225,12 +311,13 @@ class DisplacementPredictor(nn.Module):
             The FC input size is computed as 128 * G * G automatically.
             Defaults to 5 (matches the original Abaqus dataset).
     """
-    def __init__(self, input_channels, num_nodes, checkerboard_size=5):
+    def __init__(self, input_channels, num_nodes, checkerboard_size=5, mat_dim=0):
         super(DisplacementPredictor, self).__init__()
 
         # Store so forward() can reshape correctly and for inspection
         self.num_nodes = num_nodes
         self.checkerboard_size = checkerboard_size
+        self.mat_dim = mat_dim
 
         # Convolutional layers for spatial feature extraction
         # All use padding=1 so spatial size is preserved: output remains G×G
@@ -261,22 +348,25 @@ class DisplacementPredictor(nn.Module):
         # Fully connected layers for displacement prediction.
         # After 3 same-padding conv layers the feature map is (batch, 128, G, G),
         # so the flattened size is 128 * G * G — computed dynamically here.
-        _fc_in = 128 * checkerboard_size * checkerboard_size
+        # mat_dim extra features are concatenated to the flattened encoder output.
+        _fc_in = 128 * checkerboard_size * checkerboard_size + mat_dim
         self.fc = nn.Sequential(
             nn.Linear(_fc_in, 512),
             nn.ReLU(),
             nn.Linear(512, num_nodes * 3)  # Output size = num_nodes * 3 (displacement components)
         )
 
-    def forward(self, x):
+    def forward(self, x, mat=None):
         """
         Forward pass of the displacement predictor model.
 
         Args:
-            x (Tensor): Input tensor of shape (batch_size, input_channels, height, width).
+            x   (Tensor): (batch, input_channels, H, W) checkerboard input.
+            mat (Tensor | None): (batch, mat_dim) normalised material features.
+                Required when mat_dim > 0.
 
         Returns:
-            Tensor: Predicted displacement tensor of shape (batch_size, num_nodes, 3).
+            Tensor: (batch, num_nodes, 3) predicted displacements.
         """
         x = self.conv1(x)
         x = self.ca1(x)
@@ -292,36 +382,41 @@ class DisplacementPredictor(nn.Module):
 
         # Flatten the output for fully connected layers
         x = x.view(x.size(0), -1)
+        if mat is not None and self.mat_dim > 0:
+            x = torch.cat([x, mat], dim=1)
         x = self.fc(x)
 
         # Reshape output to (batch_size, num_nodes, 3)
         return x.view(x.size(0), -1, 3)
 
 # 5. Data Loader Creation Function
-def create_data_loaders(base_folder, load_files=("checkerboard", "displacements"), skip_missing=True, batch_size=15):
+def create_data_loaders(base_folder, load_files=("checkerboard", "displacements"), skip_missing=True, batch_size=15, load_material_features=False):
     """
     Create PyTorch DataLoaders for training, validation, and testing.
 
     Args:
         base_folder (str): Path to the folder containing simulation data.
-        num_simulations (int): Number of simulation subfolders to process.
         load_files (tuple): Names of the files to load (default: ("checkerboard", "displacements")).
         skip_missing (bool): Whether to skip missing files or raise an error.
         batch_size (int): Batch size for DataLoaders.
+        load_material_features (bool): If True, parse material blocks and include them
+            as a second item in each batch (checkerboard, mat_features, displacement).
 
     Returns:
         tuple: DataLoaders for training, validation, and testing, and the loaded data dictionary.
     """
-    loaded_data = load_all_npy_files(base_folder, load_files, skip_missing)
+    loaded_data = load_all_npy_files(base_folder, load_files, skip_missing,
+                                     load_material_features=load_material_features)
     checkerboard = loaded_data["checkerboard"]
     displacements = loaded_data["displacements"]
+    mat_features = loaded_data.get("material_features", None)
 
     # Set Random State for Reproducibility
     torch.manual_seed(2024)
     np.random.seed(2024)
 
     # Create dataset
-    full_dataset = CheckerboardDataset(checkerboard, displacements)
+    full_dataset = CheckerboardDataset(checkerboard, displacements, mat_features)
 
     # Split into train, validation, and test sets
     train_size = int(0.7 * len(full_dataset))
@@ -445,7 +540,7 @@ def infer_dataset_shape(base_folder):
     )
 
 # 7. Training Function
-def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, epochs=10, patience=5, device=None, plot_save_path=None):
+def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, epochs=10, patience=5, device=None, plot_save_path=None, use_amp=False, accum_steps=1, use_material=False):
     """
     Train the model with early stopping.
 
@@ -467,6 +562,13 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Training on device: {device}")
 
+    # Ensure model is on the target device (idempotent if already there).
+    model = model.to(device)
+
+    # AMP setup — only active on CUDA; gracefully degrades to float32 on CPU.
+    _use_amp = use_amp and device.type == 'cuda'
+    scaler = torch.amp.GradScaler('cuda') if _use_amp else None
+
     best_val_loss = float('inf')
     early_stop_counter = 0
 
@@ -485,16 +587,37 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         # Training
         model.train()
         epoch_loss = 0.0
+        optimizer.zero_grad()
 
-        for checkerboard, displacement in train_loader:
+        for micro_idx, batch in enumerate(train_loader):
+            if use_material:
+                checkerboard, mat_feat, displacement = batch
+                mat_feat = mat_feat.to(device)
+            else:
+                checkerboard, displacement = batch
+                mat_feat = None
             checkerboard = checkerboard.to(device)
             displacement = displacement.to(device)
-            optimizer.zero_grad()
-            predicted_displacements = model(checkerboard)
-            loss = criterion(predicted_displacements, displacement)
-            epoch_loss += loss.item()
-            loss.backward()
-            optimizer.step()
+
+            if _use_amp:
+                with torch.amp.autocast('cuda'):
+                    predicted_displacements = model(checkerboard, mat_feat)
+                    loss = criterion(predicted_displacements, displacement)
+                scaler.scale(loss / accum_steps).backward()
+            else:
+                predicted_displacements = model(checkerboard, mat_feat)
+                loss = criterion(predicted_displacements, displacement)
+                (loss / accum_steps).backward()
+
+            epoch_loss += loss.item()  # un-divided MSE for reporting
+
+            if (micro_idx + 1) % accum_steps == 0 or (micro_idx + 1) == len(train_loader):
+                if _use_amp:
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    optimizer.step()
+                optimizer.zero_grad()
 
         scheduler.step()
         train_loss = epoch_loss / len(train_loader)
@@ -504,10 +627,16 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         model.eval()
         val_loss = 0.0
         with torch.no_grad():
-            for checkerboard, displacement in val_loader:
+            for val_batch in val_loader:
+                if use_material:
+                    checkerboard, mat_feat, displacement = val_batch
+                    mat_feat = mat_feat.to(device)
+                else:
+                    checkerboard, displacement = val_batch
+                    mat_feat = None
                 checkerboard = checkerboard.to(device)
                 displacement = displacement.to(device)
-                predicted_displacements = model(checkerboard)
+                predicted_displacements = model(checkerboard, mat_feat)
                 loss = criterion(predicted_displacements, displacement)
                 val_loss += loss.item()
         val_loss /= len(val_loader)
@@ -519,9 +648,9 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             early_stop_counter = 0
         else:
             early_stop_counter += 1
-            if early_stop_counter >= patience:
-                print(f"Early stopping triggered after {epoch+1} epochs.")
-                break
+        if early_stop_counter >= patience:
+            print(f"Early stopping triggered after {epoch+1} epochs.")
+            break
 
         line1.set_xdata(range(1, len(train_losses) + 1))
         line1.set_ydata(train_losses)
@@ -555,7 +684,7 @@ def smape(y_true, y_pred):
     smape_value = torch.mean(numerator / denominator)
     return smape_value
 
-def evaluate_model(model, test_loader, criterion, device=None):
+def evaluate_model(model, test_loader, criterion, device=None, use_material=False):
     """
     Evaluate the model on the test set.
 
@@ -579,11 +708,17 @@ def evaluate_model(model, test_loader, criterion, device=None):
 
 
     with torch.no_grad():
-        for checkerboard, displacement in test_loader:
+        for test_batch in test_loader:
+            if use_material:
+                checkerboard, mat_feat, displacement = test_batch
+                mat_feat = mat_feat.to(device)
+            else:
+                checkerboard, displacement = test_batch
+                mat_feat = None
             checkerboard = checkerboard.to(device)
             displacement = displacement.to(device)
             # Forward pass to get predictions
-            predicted_displacements = model(checkerboard)
+            predicted_displacements = model(checkerboard, mat_feat)
 
             # Calculate batch MSE
             batch_mse = criterion(predicted_displacements, displacement).item()  # Compute MSE loss for the batch
@@ -791,17 +926,18 @@ def train_save_gui(data_path):
 # ============================================================
 
 class FieldDataset(Dataset):
-    """Dataset that serves (checkerboard, disp_field) pairs.
+    """Dataset that serves (checkerboard, [mat_features,] disp_field) tuples.
 
     Displacements are stored flat (N, 3) in .npy files but the nodes lie on a
     regular H×W grid (X outer-loop, Y inner-loop).  This class reshapes them
     to (3, H, W) so a convolutional decoder can predict the full spatial field.
     """
-    def __init__(self, checkerboards, displacements, grid_H, grid_W):
+    def __init__(self, checkerboards, displacements, grid_H, grid_W, mat_features=None):
         self.checkerboards = checkerboards
         self.displacements = displacements
         self.grid_H = grid_H
         self.grid_W = grid_W
+        self.mat_features = mat_features  # (N, 7) or None
 
     def __len__(self):
         return len(self.checkerboards)
@@ -814,6 +950,9 @@ class FieldDataset(Dataset):
             disp.reshape(self.grid_H, self.grid_W, 3).transpose(2, 0, 1),
             dtype=torch.float32,
         )
+        if self.mat_features is not None:
+            mat = torch.tensor(self.mat_features[idx], dtype=torch.float32)
+            return cb, mat, field
         return cb, field
 
 
@@ -832,13 +971,15 @@ def infer_grid_shape(data_path):
     raise ValueError(f"Cannot determine grid shape from node_coords.npy in {data_path}")
 
 
-def create_field_data_loaders(data_path, batch_size=15):
-    """Load data and build DataLoaders serving (checkerboard, disp_field) pairs."""
-    loaded = load_all_npy_files(data_path, ('checkerboard', 'displacements'))
+def create_field_data_loaders(data_path, batch_size=15, load_material_features=False):
+    """Load data and build DataLoaders serving (checkerboard, [mat,] disp_field) tuples."""
+    loaded = load_all_npy_files(data_path, ('checkerboard', 'displacements'),
+                                load_material_features=load_material_features)
     grid_H, grid_W = infer_grid_shape(data_path)
+    mat_features = loaded.get('material_features', None)
 
     torch.manual_seed(2024); np.random.seed(2024)
-    full_ds = FieldDataset(loaded['checkerboard'], loaded['displacements'], grid_H, grid_W)
+    full_ds = FieldDataset(loaded['checkerboard'], loaded['displacements'], grid_H, grid_W, mat_features)
     n = len(full_ds)
     tr, va = int(0.7 * n), int(0.15 * n)
     te = n - tr - va
@@ -866,10 +1007,11 @@ class ConvDecoderPredictor(nn.Module):
     input_channels : int
     out_H, out_W   : spatial size of the predicted displacement field
     """
-    def __init__(self, input_channels=1, out_H=51, out_W=51):
+    def __init__(self, input_channels=1, out_H=51, out_W=51, mat_dim=0):
         super().__init__()
         self.out_H = out_H
         self.out_W = out_W
+        self.mat_dim = mat_dim
 
         # Encoder — identical to DisplacementPredictor (3 conv+attention blocks)
         self.conv1 = nn.Sequential(nn.Conv2d(input_channels, 32, 3, padding=1),
@@ -884,6 +1026,9 @@ class ConvDecoderPredictor(nn.Module):
                                    nn.BatchNorm2d(128), nn.ReLU())
         self.ca3 = ChannelAttention(128); self.sa3 = SpatialAttention()
 
+        # Material projection: project mat_dim → 128 and add as spatial bias to encoder output
+        self.mat_proj = nn.Linear(mat_dim, 128) if mat_dim > 0 else None
+
         # Decoder: upsample to training grid resolution, then refine with convolutions
         self.decoder = nn.Sequential(
             nn.Upsample(size=(out_H, out_W), mode='bilinear', align_corners=False),
@@ -893,11 +1038,19 @@ class ConvDecoderPredictor(nn.Module):
             nn.Conv2d(64, 3, 1),  # 3 channels = ux, uy, uz; no activation (displacements can be negative)
         )
 
-    def forward(self, x):
-        """Return predicted displacement field (B, 3, out_H, out_W)."""
+    def forward(self, x, mat=None):
+        """Return predicted displacement field (B, 3, out_H, out_W).
+
+        Args:
+            x   (Tensor): (B, 1, G, G) checkerboard input.
+            mat (Tensor | None): (B, mat_dim) normalised material features.
+        """
         x = self.sa1(self.ca1(self.conv1(x)))
         x = self.sa2(self.ca2(self.conv2(x)))
         x = self.sa3(self.ca3(self.conv3(x)))
+        if mat is not None and self.mat_proj is not None:
+            # Broadcast material features as a spatial bias over the encoder feature map
+            x = x + self.mat_proj(mat).unsqueeze(-1).unsqueeze(-1)
         return self.decoder(x)
 
 
@@ -941,12 +1094,16 @@ def sample_field_at_coords(field, node_xy):
     return sampled.squeeze(-1).permute(0, 2, 1)
 
 
-def train_save_conv_gui(data_path, epochs=20):
+def train_save_conv_gui(data_path, epochs=20, use_amp=None, accum_steps=None, use_material=False):
     """Train ConvDecoderPredictor on *data_path* and save to saved_model_conv/.
 
     Args:
-        data_path (str): Parent folder containing Simulation_N/ sub-folders.
-        epochs    (int): Training epochs (default 20; conv decoder converges faster).
+        data_path   (str):  Parent folder containing Simulation_N/ sub-folders.
+        epochs      (int):  Training epochs (default 20; conv decoder converges faster).
+        use_amp     (bool|None): Enable AMP mixed-precision. None = auto (True when
+                                 CUDA available and grid > 256).
+        accum_steps (int|None):  Gradient accumulation steps. None = auto (4 for large
+                                 grids, 1 otherwise).
     """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if torch.cuda.is_available():
@@ -955,10 +1112,20 @@ def train_save_conv_gui(data_path, epochs=20):
         print("No GPU — training on CPU.")
 
     print("Loading data...")
-    train_loader, val_loader, _, grid_H, grid_W = create_field_data_loaders(data_path)
+    train_loader, val_loader, _, grid_H, grid_W = create_field_data_loaders(
+        data_path, load_material_features=use_material)
     _, G = infer_dataset_shape(data_path)  # checkerboard size
+    _mat_dim = MAT_DIM if use_material else 0
 
-    model = ConvDecoderPredictor(input_channels=1, out_H=grid_H, out_W=grid_W).to(device)
+    # Auto-select AMP and accumulation for large output grids to avoid OOM.
+    if use_amp is None:
+        use_amp = torch.cuda.is_available() and (grid_H > 256 or grid_W > 256)
+    if accum_steps is None:
+        accum_steps = 4 if (use_amp and (grid_H > 256 or grid_W > 256)) else 1
+    if use_amp or accum_steps > 1:
+        print(f"Memory settings: use_amp={use_amp}  accum_steps={accum_steps}")
+
+    model = ConvDecoderPredictor(input_channels=1, out_H=grid_H, out_W=grid_W, mat_dim=_mat_dim).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"ConvDecoder: grid={grid_H}×{grid_W}  params={n_params:,}  "
           f"({n_params*4/1e6:.2f} MB weights)")
@@ -976,6 +1143,7 @@ def train_save_conv_gui(data_path, epochs=20):
         model=model, train_loader=train_loader, val_loader=val_loader,
         criterion=criterion, optimizer=optimizer, scheduler=scheduler,
         epochs=epochs, patience=7, device=device, plot_save_path=plot_path,
+        use_amp=use_amp, accum_steps=accum_steps, use_material=use_material,
     )
     print(f"Training done. train={train_losses[-1]:.4e}  val={val_losses[-1]:.4e}")
 
@@ -1049,6 +1217,463 @@ def load_and_evaluate_conv_gui(model_path, test_data_path, pred_save_dir):
         np.savetxt(os.path.join(batch_dir, "pred_displacements.csv"), pred, delimiter=",")
 
     print(f"ConvDecoder evaluation complete. Predictions saved to {pred_save_dir}")
+
+
+# ============================================================
+# SIREN / Implicit Neural Representation (INR)
+# ============================================================
+
+class SIRENLayer(nn.Module):
+    """One layer of a Sinusoidal Representation Network (SIREN).
+
+    Sitzmann et al. 2020 "Implicit Neural Representations with Periodic
+    Activation Functions."  Uses sin activations and a specific weight
+    initialization scheme that preserves signal statistics across layers.
+
+    Parameters
+    ----------
+    in_features  : int
+    out_features : int
+    omega_0      : float — 30.0 for the first layer, 1.0 for subsequent.
+    is_first     : bool  — controls weight init scale.
+    """
+    def __init__(self, in_features: int, out_features: int,
+                 omega_0: float = 1.0, is_first: bool = False):
+        super().__init__()
+        self.omega_0 = omega_0
+        self.linear  = nn.Linear(in_features, out_features)
+        fan_in = in_features
+        with torch.no_grad():
+            if is_first:
+                self.linear.weight.uniform_(-1.0 / fan_in, 1.0 / fan_in)
+            else:
+                bound = (6.0 / fan_in) ** 0.5 / self.omega_0
+                self.linear.weight.uniform_(-bound, bound)
+            nn.init.zeros_(self.linear.bias)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.sin(self.omega_0 * self.linear(x))
+
+
+class INRDecoder(nn.Module):
+    """Implicit neural representation MLP: [x, y, z_latent] → [ux, uy, uz].
+
+    Parameters
+    ----------
+    latent_dim : int — dimension of the latent code from the encoder (default 256)
+    hidden     : int — hidden width for all SIREN layers (default 256)
+    n_layers   : int — number of hidden SIREN layers (default 4)
+    """
+    def __init__(self, latent_dim: int = 256, hidden: int = 256, n_layers: int = 4):
+        super().__init__()
+        in_dim  = 2 + latent_dim
+        layers  = [SIRENLayer(in_dim, hidden, omega_0=30.0, is_first=True)]
+        for _ in range(n_layers - 1):
+            layers.append(SIRENLayer(hidden, hidden, omega_0=1.0, is_first=False))
+        self.net = nn.Sequential(*layers)
+        self.out = nn.Linear(hidden, 3)
+        nn.init.zeros_(self.out.bias)
+        nn.init.uniform_(self.out.weight, -1.0 / hidden, 1.0 / hidden)
+
+    def forward(self, coords: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
+        """
+        Parameters
+        ----------
+        coords : (K, 2) float32 — node XY coordinates in [0, 1]
+        z      : (B, latent_dim) float32 — latent code per sample
+
+        Returns
+        -------
+        (B, K, 3) — displacement predictions at each coord for each sample
+        """
+        B, K = z.shape[0], coords.shape[0]
+        z_exp = z.unsqueeze(1).expand(B, K, -1)         # (B, K, latent_dim)
+        c_exp = coords.unsqueeze(0).expand(B, K, -1)    # (B, K, 2)
+        inp   = torch.cat([c_exp, z_exp], dim=-1)        # (B, K, 2+latent_dim)
+        return self.out(self.net(inp.view(B * K, -1))).view(B, K, 3)
+
+
+class SIRENPredictor(nn.Module):
+    """CNN encoder + SIREN INR decoder for resolution-free displacement prediction.
+
+    Unlike ConvDecoderPredictor (fixed output grid), this model accepts arbitrary
+    query coordinates and returns displacement at each.  Training samples K=512
+    nodes per forward pass, so GPU memory is O(B × K) regardless of total mesh
+    size N — enabling training on the full 1001×1001 mesh without OOM.
+
+    Parameters
+    ----------
+    input_channels : int — always 1 for the shot-peening checkerboard
+    latent_dim     : int — dimension of the latent code (default 256)
+    hidden         : int — SIREN hidden width (default 256)
+    n_layers       : int — SIREN depth (default 4)
+    """
+    def __init__(self, input_channels: int = 1, latent_dim: int = 256,
+                 hidden: int = 256, n_layers: int = 4, mat_dim: int = 0):
+        super().__init__()
+        self.latent_dim = latent_dim
+        self.mat_dim    = mat_dim
+
+        # Encoder — identical 3-block structure to ConvDecoderPredictor
+        self.conv1 = nn.Sequential(nn.Conv2d(input_channels, 32, 3, padding=1),
+                                   nn.BatchNorm2d(32), nn.ReLU())
+        self.ca1 = ChannelAttention(32);  self.sa1 = SpatialAttention()
+
+        self.conv2 = nn.Sequential(nn.Conv2d(32, 64, 3, padding=1),
+                                   nn.BatchNorm2d(64), nn.ReLU())
+        self.ca2 = ChannelAttention(64);  self.sa2 = SpatialAttention()
+
+        self.conv3 = nn.Sequential(nn.Conv2d(64, 128, 3, padding=1),
+                                   nn.BatchNorm2d(128), nn.ReLU())
+        self.ca3 = ChannelAttention(128); self.sa3 = SpatialAttention()
+
+        # Global average pool → latent projection
+        self.latent_proj = nn.Linear(128, latent_dim)
+
+        # INR decoder — takes latent_dim + mat_dim as conditioning vector
+        self.inr = INRDecoder(latent_dim=latent_dim + mat_dim, hidden=hidden, n_layers=n_layers)
+
+    def encode(self, checkerboard: torch.Tensor, mat: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Encode checkerboard → latent z (B, latent_dim [+ mat_dim])."""
+        x = self.sa1(self.ca1(self.conv1(checkerboard)))
+        x = self.sa2(self.ca2(self.conv2(x)))
+        x = self.sa3(self.ca3(self.conv3(x)))
+        z = self.latent_proj(x.mean(dim=[2, 3]))   # (B, latent_dim)
+        if mat is not None and self.mat_dim > 0:
+            z = torch.cat([z, mat], dim=1)          # (B, latent_dim + mat_dim)
+        return z
+
+    def forward(self, checkerboard: torch.Tensor,
+                coords: torch.Tensor,
+                mat: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        Parameters
+        ----------
+        checkerboard : (B, 1, G, G)
+        coords       : (K, 2) float32 node XY coordinates in [0, 1]
+        mat          : (B, mat_dim) normalised material features, or None
+
+        Returns
+        -------
+        (B, K, 3) displacement predictions
+        """
+        return self.inr(coords, self.encode(checkerboard, mat))
+
+
+# ---- SIREN data loading ----
+
+class SIRENDataset(Dataset):
+    """Dataset serving (checkerboard, node_xy, displacements) triples.
+
+    Displacements stay flat (N, 3) and coordinates are stored as (N, 2).
+    Random K-node subsampling is performed by siren_collate_fn, not here.
+
+    Parameters
+    ----------
+    checkerboards : np.ndarray (S, G, G)
+    node_xy       : np.ndarray (N, 2) — shared mesh for all simulations
+    displacements : np.ndarray (S, N, 3)
+    """
+    def __init__(self, checkerboards, node_xy, displacements, mat_features=None):
+        self.checkerboards = checkerboards
+        self.node_xy       = self._normalise_coords(np.asarray(node_xy, dtype=np.float32))
+        self.displacements = displacements
+        self.mat_features  = mat_features  # (S, 7) or None
+
+    @staticmethod
+    def _normalise_coords(xy: np.ndarray) -> np.ndarray:
+        """Scale each XY column independently to [0, 1]."""
+        xy = xy.copy().astype(np.float32)
+        for col in range(2):
+            lo, hi = xy[:, col].min(), xy[:, col].max()
+            xy[:, col] = (xy[:, col] - lo) / max(float(hi - lo), 1e-12)
+        return xy
+
+    def __len__(self):
+        return len(self.checkerboards)
+
+    def __getitem__(self, idx):
+        cb  = torch.tensor(self.checkerboards[idx], dtype=torch.float32).unsqueeze(0)
+        xy  = torch.tensor(self.node_xy,            dtype=torch.float32)
+        d   = torch.tensor(self.displacements[idx], dtype=torch.float32)
+        if self.mat_features is not None:
+            mat = torch.tensor(self.mat_features[idx], dtype=torch.float32)
+            return cb, mat, xy, d
+        return cb, xy, d
+
+
+def siren_collate_fn(k_nodes: int):
+    """Return a collate_fn that randomly subsamples k_nodes per batch.
+
+    Handles both 3-tuple (cb, xy, d) and 4-tuple (cb, mat, xy, d) items.
+    """
+    def collate(batch):
+        if len(batch[0]) == 4:
+            cbs, mats, xys, disps = zip(*batch)
+            mats = torch.stack(mats)    # (B, 7)
+        else:
+            cbs, xys, disps = zip(*batch)
+            mats = None
+        cbs   = torch.stack(cbs)    # (B, 1, G, G)
+        xys   = torch.stack(xys)    # (B, N, 2)
+        disps = torch.stack(disps)  # (B, N, 3)
+        N   = xys.shape[1]
+        idx = torch.randperm(N)[:k_nodes]
+        if mats is not None:
+            return cbs, mats, xys[0, idx], disps[:, idx, :]
+        return cbs, xys[0, idx], disps[:, idx, :]
+    return collate
+
+
+def create_siren_loaders(data_path: str, k_nodes: int = 512, batch_size: int = 8,
+                          load_material_features: bool = False):
+    """Build train/val/test DataLoaders for SIRENPredictor training.
+
+    Requires node_coords.npy in at least one Simulation_* subfolder.
+
+    Parameters
+    ----------
+    data_path              : str — parent folder with Simulation_N/ sub-folders
+    k_nodes                : int — nodes subsampled per forward pass (GPU memory knob)
+    batch_size             : int
+    load_material_features : bool — if True include (B, 7) material tensors in batches
+
+    Returns
+    -------
+    train_loader, val_loader, test_loader, N_total
+    """
+    loaded = load_all_npy_files(data_path, ('checkerboard', 'displacements'),
+                                load_material_features=load_material_features)
+    cbs   = loaded['checkerboard']   # (S, G, G)
+    disps = loaded['displacements']  # (S, N, 3)
+    mat_features = loaded.get('material_features', None)
+
+    nc_path = next(
+        (str(p / 'node_coords.npy')
+         for p in sorted(Path(data_path).glob('Simulation_*'))
+         if (p / 'node_coords.npy').exists()),
+        None,
+    )
+    if nc_path is None:
+        raise FileNotFoundError(
+            f"No node_coords.npy found under {data_path}. "
+            "SIREN training requires explicit node coordinates."
+        )
+    node_xy = np.load(nc_path)[:, :2].astype(np.float32)  # (N, 2) — drop Z
+
+    torch.manual_seed(2024); np.random.seed(2024)
+    full_ds = SIRENDataset(cbs, node_xy, disps, mat_features)
+    n  = len(full_ds)
+    tr, va = int(0.7 * n), int(0.15 * n)
+    te = n - tr - va
+    train_ds, val_ds, test_ds = random_split(full_ds, [tr, va, te])
+
+    _pin     = torch.cuda.is_available()
+    _collate = siren_collate_fn(k_nodes)
+    return (
+        DataLoader(train_ds, batch_size=batch_size, shuffle=True,
+                   num_workers=0, pin_memory=_pin, collate_fn=_collate),
+        DataLoader(val_ds,   batch_size=batch_size, shuffle=False,
+                   num_workers=0, pin_memory=_pin, collate_fn=_collate),
+        DataLoader(test_ds,  batch_size=batch_size, shuffle=False,
+                   num_workers=0, pin_memory=_pin, collate_fn=_collate),
+        node_xy.shape[0],
+    )
+
+
+def train_save_siren_gui(data_path: str, epochs: int = 50,
+                          latent_dim: int = 256, k_nodes: int = 512,
+                          batch_size: int = 8, use_material: bool = False):
+    """Train SIRENPredictor on *data_path* and save to saved_model_siren/.
+
+    Uses random K-node subsampling so GPU memory is O(B × k_nodes)
+    regardless of total mesh size — enables training on 1M-node meshes.
+
+    Args:
+        data_path  : Parent folder with Simulation_N/ sub-folders.
+        epochs     : Training epochs.
+        latent_dim : Encoder latent code dimension.
+        k_nodes    : Nodes sampled per forward pass (GPU memory control knob).
+        batch_size : Batch size.
+    """
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if torch.cuda.is_available():
+        print(f"GPU: {torch.cuda.get_device_name(0)} — training on CUDA.")
+    else:
+        print("No GPU — training on CPU.")
+
+    print(f"Loading data (k_nodes={k_nodes}, batch_size={batch_size})...")
+    train_loader, val_loader, _, N_total = create_siren_loaders(
+        data_path, k_nodes=k_nodes, batch_size=batch_size,
+        load_material_features=use_material,
+    )
+    _mat_dim = MAT_DIM if use_material else 0
+
+    model = SIRENPredictor(input_channels=1, latent_dim=latent_dim, mat_dim=_mat_dim).to(device)
+    n_params = sum(p.numel() for p in model.parameters())
+    print(f"SIRENPredictor: latent_dim={latent_dim}  k_nodes={k_nodes}  "
+          f"params={n_params:,}  ({n_params*4/1e6:.2f} MB weights)")
+    print(f"Full mesh N={N_total}  memory per step: B×K×3 = "
+          f"{batch_size}×{k_nodes}×3 = {batch_size*k_nodes*3*4/1e6:.2f} MB")
+
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-5)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+
+    save_dir = Path(data_path) / "saved_model_siren"
+    save_dir.mkdir(parents=True, exist_ok=True)
+    plot_path = str(save_dir / "training_loss_curve.png")
+
+    best_val_loss = float('inf')
+    patience      = 10
+    patience_ctr  = 0
+    train_losses, val_losses = [], []
+
+    fig, ax = plt.subplots()
+    ax.set_xlabel('Epoch'); ax.set_ylabel('Loss (subsampled MSE)')
+    ax.set_title('SIREN Training and Validation Loss')
+    line1, = ax.plot([], [], label='Train', color='blue')
+    line2, = ax.plot([], [], label='Val',   color='orange')
+    ax.legend()
+
+    for epoch in range(epochs):
+        model.train()
+        epoch_loss = 0.0
+        for batch in train_loader:
+            if use_material:
+                cbs, mats, coords, disps = batch
+                mats = mats.to(device)
+            else:
+                cbs, coords, disps = batch
+                mats = None
+            cbs    = cbs.to(device)
+            coords = coords.to(device)
+            disps  = disps.to(device)
+            optimizer.zero_grad()
+            pred = model(cbs, coords, mats)
+            loss = criterion(pred, disps)
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item()
+        train_loss = epoch_loss / len(train_loader)
+        train_losses.append(train_loss)
+
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for val_batch in val_loader:
+                if use_material:
+                    cbs, mats, coords, disps = val_batch
+                    mats = mats.to(device)
+                else:
+                    cbs, coords, disps = val_batch
+                    mats = None
+                val_loss += criterion(
+                    model(cbs.to(device), coords.to(device), mats),
+                    disps.to(device),
+                ).item()
+        val_loss /= len(val_loader)
+        val_losses.append(val_loss)
+        scheduler.step()
+
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            patience_ctr  = 0
+            torch.save(model, save_dir / "trained_siren_best.pth")
+        else:
+            patience_ctr += 1
+            if patience_ctr >= patience:
+                print(f"Early stopping after {epoch + 1} epochs.")
+                break
+
+        line1.set_xdata(range(1, len(train_losses) + 1))
+        line1.set_ydata(train_losses)
+        line2.set_xdata(range(1, len(val_losses) + 1))
+        line2.set_ydata(val_losses)
+        ax.relim(); ax.autoscale_view()
+        print(f"Epoch {epoch+1}/{epochs}  train={train_loss:.4e}  val={val_loss:.4e}")
+
+    plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+
+    save_path = save_dir / "trained_siren_full_model.pth"
+    torch.save(model, save_path)
+    print(f"SIREN model saved to {save_path}")
+
+    _ref_src = next(
+        (p / "node_coords.npy" for p in sorted(Path(data_path).glob("Simulation_*"))
+         if (p / "node_coords.npy").exists()), None)
+    if _ref_src:
+        import shutil as _sh
+        _sh.copy2(str(_ref_src), str(save_dir / "reference_node_coords.npy"))
+        print("Reference node coords saved.")
+
+    return train_losses, val_losses
+
+
+def load_and_evaluate_siren_gui(model_path: str, test_data_path: str,
+                                 pred_save_dir: str, chunk_size: int = 4096):
+    """Load a SIRENPredictor and evaluate on the full node mesh in chunks.
+
+    Chunks the full N-node coordinate set so inference never allocates more
+    than chunk_size × latent_dim floats at once — safe at N=1M nodes.
+
+    Args:
+        model_path     : Path to .pth saved by train_save_siren_gui.
+        test_data_path : Folder with checkerboard.npy and node_coords.npy.
+        pred_save_dir  : Output directory for pred_displacements.npy files.
+        chunk_size     : Nodes per inference chunk (default 4096).
+    """
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model  = torch.load(model_path, map_location=device, weights_only=False)
+    model.eval()
+
+    if os.path.exists(os.path.join(test_data_path, 'checkerboard.npy')):
+        cbs = np.stack([np.load(os.path.join(test_data_path, 'checkerboard.npy'))])
+    else:
+        loaded = load_all_npy_files(test_data_path, ('checkerboard',), skip_missing=True)
+        cbs = loaded['checkerboard']
+
+    nc_path = os.path.join(test_data_path, 'node_coords.npy')
+    if not os.path.exists(nc_path):
+        for d in sorted(os.listdir(test_data_path)):
+            cand = os.path.join(test_data_path, d, 'node_coords.npy')
+            if os.path.exists(cand):
+                nc_path = cand; break
+    if not os.path.exists(nc_path):
+        raise FileNotFoundError(
+            f"node_coords.npy not found in {test_data_path}. "
+            "SIREN inference requires node coordinates."
+        )
+    node_xy = SIRENDataset._normalise_coords(
+        np.load(nc_path)[:, :2].astype(np.float32)
+    )
+    N = len(node_xy)
+
+    os.makedirs(pred_save_dir, exist_ok=True)
+
+    for idx, cb in enumerate(cbs):
+        cb_t = torch.tensor(cb[None, None], dtype=torch.float32).to(device)
+
+        with torch.no_grad():
+            z = model.encode(cb_t)  # (1, latent_dim)
+            chunks = []
+            for start in range(0, N, chunk_size):
+                end   = min(start + chunk_size, N)
+                xy_ch = torch.tensor(node_xy[start:end],
+                                     dtype=torch.float32).to(device)
+                chunks.append(model.inr(xy_ch, z)[0].cpu().numpy())  # (K_ch, 3)
+
+        pred = np.concatenate(chunks, axis=0)  # (N, 3)
+
+        batch_dir = os.path.join(pred_save_dir, f"Simulation_{idx}")
+        os.makedirs(batch_dir, exist_ok=True)
+        np.save(os.path.join(batch_dir, "pred_displacements.npy"), pred)
+        np.savetxt(os.path.join(batch_dir, "pred_displacements.csv"),
+                   pred, delimiter=",")
+
+    print(f"SIREN evaluation complete. N={N} nodes. "
+          f"Predictions saved to {pred_save_dir}")
 
 
 ### Evaluation_GUI part
@@ -1152,7 +1777,8 @@ def _interpolate_displacements(pred_flat, ref_coords, eval_coords):
 
 
 def evaluate_model_gui(model, test_loader, criterion, pred_save_dir, device=None,
-                       ref_node_coords=None, eval_node_coords=None):
+                       ref_node_coords=None, eval_node_coords=None,
+                       mat_features_tensor=None):
     """
     Evaluate the model on the test set and save predictions.
 
@@ -1198,7 +1824,13 @@ def evaluate_model_gui(model, test_loader, criterion, pred_save_dir, device=None
                 )
 
             # Forward pass — model returns (batch, N_train, 3)
-            predicted_displacements = model(checkerboard)
+            _mat_dim = getattr(model, 'mat_dim', 0)
+            if mat_features_tensor is not None and _mat_dim > 0:
+                batch_sz = checkerboard.shape[0]
+                mat = mat_features_tensor.expand(batch_sz, -1).to(device)
+                predicted_displacements = model(checkerboard, mat)
+            else:
+                predicted_displacements = model(checkerboard)
 
             # ---- Layer 2: output mesh spatial interpolation ----
             N_train = predicted_displacements.shape[1]
@@ -1264,7 +1896,8 @@ def evaluate_model_gui(model, test_loader, criterion, pred_save_dir, device=None
     return overall_mse
 
 
-def load_and_evaluate_model_gui(model_path, test_data_path, pred_save_dir):
+def load_and_evaluate_model_gui(model_path, test_data_path, pred_save_dir,
+                                mat_features=None):
     """
     Load a previously saved model and run inference on a new peen-intensity
     folder, saving the predicted displacements for later visualisation.
@@ -1286,6 +1919,10 @@ def load_and_evaluate_model_gui(model_path, test_data_path, pred_save_dir):
         pred_save_dir (str): Output directory.  One ``Simulation_<idx>/``
             sub-folder is created per sample; each contains
             ``pred_displacements.npy`` and ``pred_displacements.csv``.
+        mat_features (np.ndarray | None): Pre-normalised (7,) material feature
+            vector built by the GUI from user-selected workpiece and shot names.
+            Pass ``None`` to let the model run without material conditioning
+            (legacy behaviour for non-material-conditioned models).
 
     Side-effects:
         Prints checkerboard input, first-5-node predictions and ground truth
@@ -1329,6 +1966,14 @@ def load_and_evaluate_model_gui(model_path, test_data_path, pred_save_dir):
         print("[Info] node_coords.npy not found in test folder — "
               "output mesh interpolation disabled.")
 
+    # Build material feature tensor if provided
+    mat_t = None
+    if mat_features is not None:
+        mat_t = torch.tensor(
+            np.asarray(mat_features, dtype=np.float32), dtype=torch.float32
+        ).unsqueeze(0).to(device)  # shape (1, 7)
+        print(f"Material conditioning enabled (mat_features shape: {mat_t.shape}).")
+
     # Define loss function
     criterion = nn.MSELoss()
 
@@ -1342,6 +1987,7 @@ def load_and_evaluate_model_gui(model_path, test_data_path, pred_save_dir):
         device=device,
         ref_node_coords=ref_node_coords,
         eval_node_coords=eval_node_coords,
+        mat_features_tensor=mat_t,
     )
     print("Evaluation completed, Predicted Displacements saved.")
 
@@ -1500,8 +2146,12 @@ def curved_surface_inference(
             mode="bilinear", align_corners=False,
         )
 
-    with torch.no_grad():
-        raw_out = model(cb_tensor)
+    # SIRENPredictor handles its own forward pass in the isinstance block below.
+    # For the other architectures run the standard single-arg forward here.
+    raw_out = None
+    if not isinstance(model, SIRENPredictor):
+        with torch.no_grad():
+            raw_out = model(cb_tensor)
 
     # ---- Layer 2: map predictions onto STL vertices ----
     # ConvDecoderPredictor outputs a (1, 3, H, W) field — bilinearly sample it at
@@ -1515,6 +2165,23 @@ def curved_surface_inference(
         pred_np     = raw_out[0].permute(1, 2, 0).reshape(-1, 3).cpu().numpy()  # (H*W, 3) for saving
         print(f"[curved_surface_inference] ConvDecoder: bilinear-sampled "
               f"{surface.n_vertices} STL vertices from ({model.out_H}×{model.out_W}) field.")
+    elif isinstance(model, SIRENPredictor):
+        stl_xy_norm = SIRENDataset._normalise_coords(
+            surface.vertices[:, :2].astype(np.float32).copy()
+        )
+        V = len(stl_xy_norm)
+        with torch.no_grad():
+            z = model.encode(cb_tensor)  # (1, latent_dim)
+            _chunks = []
+            for _start in range(0, V, 4096):
+                _end  = min(_start + 4096, V)
+                _xy   = torch.tensor(stl_xy_norm[_start:_end],
+                                     dtype=torch.float32, device=device)
+                _chunks.append(model.inr(_xy, z)[0].cpu().numpy())
+        disp_on_stl = np.concatenate(_chunks, axis=0)  # (V, 3)
+        pred_np     = disp_on_stl
+        print(f"[curved_surface_inference] SIRENPredictor: evaluated "
+              f"{V} STL vertices in chunks.")
     else:
         pred_np = raw_out[0].cpu().numpy()        # (N_train, 3)
 

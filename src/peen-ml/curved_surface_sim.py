@@ -85,8 +85,8 @@ from multi_shot_sim import (
     compute_coverage,
     run_multi_shot_simulation,
 )
+from materials import SHOT_MATERIALS  # noqa: F401 (also imported by gaussian_nozzle_dataset_gen)
 from gaussian_nozzle_dataset_gen import (
-    SHOT_MATERIALS,
     sample_gaussian_nozzle_shots,
 )
 from stl_surface import STLSurface
