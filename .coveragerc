@@ -1,0 +1,14 @@
+[run]
+branch = True
+omit =
+    */native_dataset_gen.py
+    */gaussian_nozzle_dataset_gen.py
+    */dataset1_script.py
+    */dataset2_script.py
+    */model_gui_test_case.py
+    */taichi_impact_sim.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:

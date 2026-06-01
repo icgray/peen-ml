@@ -39,7 +39,8 @@ import shotpeen_gui as gui
 
 class TestAppInit:
     def test_window_geometry_set(self, tk_root):
-        app = gui.App(tk_root)
+        app = gui.App(tk_root)  # noqa: F841
+        tk_root.update_idletasks()
         geo = tk_root.geometry()
         # geometry() returns "WxH+X+Y"; check at least the WxH prefix
         assert geo.startswith("1100x820"), (
@@ -88,7 +89,7 @@ class TestMainMenu:
         assert tk_root.winfo_exists()
 
     def test_main_frame_has_children(self, tk_root):
-        app = gui.App(tk_root)
+        gui.App(tk_root)
         children = tk_root.winfo_children()
         assert len(children) > 0, "main_menu must add at least one widget to root"
 
@@ -123,7 +124,6 @@ class TestBrowseSignatures:
 
 class TestNumOfSimulations:
     def test_counts_real_sample(self):
-        app_class = gui.App  # test as static-style (no Tk needed for logic)
         import tkinter as tk
         root = tk.Tk(); root.withdraw()
         app = gui.App(root)
@@ -227,6 +227,7 @@ class TestPreviewFileValidation:
         monkeypatch.setattr(gui.App, "run_preview", lambda self, p: previewed.append(p))
         app = gui.App(tk_root)
         app.preview_file(str(tmp_path))
+        tk_root.update()  # flush the root.after(0, ...) callback onto the event queue
         assert previewed == [str(tmp_path)], \
             "Valid path should call run_preview with the folder path"
 

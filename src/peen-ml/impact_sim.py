@@ -351,8 +351,8 @@ def compute_stress_field(
     sigma_eqe = sigma_xe - sigma_ze
 
     # ---- Elastic strains (Eq 7a, 7b, 8) ---- #
-    epsilon_xe = (1.0 / E_b) * (sigma_xe * (1.0 - nu_b) - nu_b * sigma_xe)   # Eq 7a
-    epsilon_ze = (1.0 / E_b) * (sigma_ze - 2.0 * sigma_xe * nu_b)             # Eq 7b
+    epsilon_xe = (1.0 / E_b) * (sigma_xe * (1.0 - nu_b) - nu_b * sigma_xe)   # Eq 7a  # noqa: F841
+    epsilon_ze = (1.0 / E_b) * (sigma_ze - 2.0 * sigma_xe * nu_b)             # Eq 7b  # noqa: F841
 
     # ---- Plastic loading (Eq 20, 21) ---- #
     # Eq 20: plastic strain during loading
@@ -380,7 +380,7 @@ def compute_stress_field(
     # ---- Residual stress (Eqs 22, 35, 47a/b) ---- #
     # Scale factor Phi = ratio of average plastic strain to its maximum
     eps_Mp_approx = np.max(eps_load_p) if np.max(eps_load_p) > 0 else 1.0
-    Phi = eps_Mp_approx / eps_Mp_approx   # will be updated after plastic zone computed
+    Phi = eps_Mp_approx / eps_Mp_approx   # will be updated after plastic zone computed  # noqa: F841
 
     eps_avg = np.zeros_like(sigma_eqe)
     sxs     = np.zeros_like(sigma_eqe)
@@ -637,7 +637,7 @@ def map_stresses(
     sR_prof = stress_field["sR"]     # residual stress profile
 
     r_p    = plastic["r_p"]
-    a_p    = plastic["a_p"]
+    a_p    = plastic["a_p"]  # noqa: F841
 
     # Radial distance of each element centroid from impact point
     dx = centroids[:, 0] - ic[0]
@@ -772,7 +772,7 @@ def run_simulation(
         np.save(os.path.join(output_dir, "element_connectivity.npy"), mesh["element_connectivity"])
         np.save(os.path.join(output_dir, "disp_node_labels.npy"),     disp_node_labels)
         np.save(os.path.join(output_dir, "displacements.npy"),        displacements)
-        np.save(os.path.join(output_dir, "stress_element_labels.npy"),stress_elem_labels)
+        np.save(os.path.join(output_dir, "stress_element_labels.npy"), stress_elem_labels)
         np.save(os.path.join(output_dir, "stresses.npy"),             stresses)
 
         # Also save depth profile for post-processing

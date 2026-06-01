@@ -1196,7 +1196,6 @@ def load_and_evaluate_conv_gui(model_path, test_data_path, pred_save_dir):
     node_coords = np.load(nc_path).astype(np.float32) if os.path.exists(nc_path) else None
 
     os.makedirs(pred_save_dir, exist_ok=True)
-    criterion = nn.MSELoss()
 
     for idx, cb in enumerate(cbs):
         cb_t = torch.tensor(cb, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)

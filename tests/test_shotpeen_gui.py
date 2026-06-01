@@ -56,7 +56,7 @@ def app():
     """
     with patch("tkinter.Tk") as mock_tk_class, \
          patch("PIL.Image.open") as mock_img_open, \
-         patch("PIL.ImageTk.PhotoImage") as mock_photo:
+         patch("PIL.ImageTk.PhotoImage"):
 
         # Configure the mock root window
         mock_root = MagicMock()
@@ -102,12 +102,12 @@ class TestAppInitialisation:
         app.root.title.assert_called_with("Model GUI")
 
     def test_window_geometry_set(self, app):
-        """One-shot: window geometry is set to '800x600'."""
-        app.root.geometry.assert_called_with("800x600")
+        """One-shot: window geometry is set to '1100x820'."""
+        app.root.geometry.assert_called_with("1100x820")
 
     def test_window_size_attribute(self, app):
         """One-shot: self.window_size attribute reflects the chosen geometry string."""
-        assert app.window_size == "800x600"
+        assert app.window_size == "1100x820"
 
     def test_initial_data_path_is_empty_string(self, app):
         """One-shot: test_train_data_path starts as an empty string."""

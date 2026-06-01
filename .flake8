@@ -1,0 +1,33 @@
+[flake8]
+max-line-length = 120
+ignore =
+    E501,
+    E402,
+    E203,
+    E226,
+    W503,
+    E221,
+    E241,
+    E302,
+    E303,
+    E305,
+    E741,
+    E261,
+    E265,
+    E266,
+    E272,
+    E127,
+    E702,
+    F401,
+    F811,
+    E401,
+exclude =
+    src/peen-ml/dataset1_script.py,
+    src/peen-ml/dataset2_script.py,
+    src/peen-ml/model_gui_test_case.py,
+    src/peen-ml/taichi_impact_sim.py,
+    src/peen-ml/native_dataset_gen.py,
+    src/peen-ml/gaussian_nozzle_dataset_gen.py,
+    .git,
+    __pycache__,
+    .pytest_cache

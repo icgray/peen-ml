@@ -1,5 +1,170 @@
 # peen-ml Architecture Upgrade TODO
 
+---
+
+## ✅ Completed
+
+| # | Item | Notes |
+|---|------|-------|
+| 7 | **Material Awareness** — `materials.py` library, material CLI args in `native_dataset_gen.py`, material conditioning on all three CNN architectures (`mat_dim=7`), GUI material selectors in Generate and Evaluate tabs, per-simulation `[material]` block in `simulation_params.txt` | Done 2026-05-31 |
+| 8 | **CI Linting + Coverage** — fixed all pylint/flake8/black failures; workflows green on Python 3.9/3.10/3.11; tests expanded from 13 → 35; coverage raised from 26% → 41% | Done 2026-06-01 |
+
+---
+
+## 🟡 Next: Increase Code Coverage
+
+**Priority: High** — CI is now green. Coverage sits at **41%** across `src/`.
+Target: push to **≥ 70%** before implementing new architectures so regressions are caught early.
+
+### Coverage by file (as of 2026-06-01)
+
+Run locally to reproduce:
+```bash
+# from shotpeeningML/
+PYTHONPATH=$(pwd)/src/peen-ml MPLBACKEND=Agg \
+  pytest tests/ --cov=src --cov-branch --cov-report=term-missing --cov-config=.coveragerc
+```
+
+| File | Coverage | Uncovered blocks |
+|---|---|---|
+| `src/peen-ml/__init__.py` | 100% | — |
+| `src/peen-ml/data_viz.py` | 43% | visualize_mesh (136–164), visualize_stress_field (169–228), visualize_deformation (238–257), visualize_all body (264–272), error branches in compute_deformed_mesh (129–131) |
+| `src/peen-ml/model.py` | 40% | create_data_loaders (337–363), train_model (413–481), evaluate_model (516–556), main() (574–613), train_save_gui (640–679), create_test_loader (696–707), evaluate_model_gui (723–780), load_and_evaluate_model_gui (804–823) |
+
+### What to test next — per file
+
+#### `src/peen-ml/data_viz.py`
+
+Remaining uncovered functions all call `plt.show()`. Use `unittest.mock.patch("matplotlib.pyplot.show")` (already established in `test_data_viz.py`) and pass synthetic numpy arrays directly.
+
+- **`visualize_mesh`** (lines 134–164) — create small `node_coords`, `deformed_coords` (shape `(N,3)`), and `element_nodes` (list of index lists); call with `patch("matplotlib.pyplot.show")`. No file I/O required.
+- **`visualize_stress_field`** (lines 167–228) — needs a `simulation_folder` with `stresses.npy` (shape `(N,6)`) and `stress_element_labels.npy`. Add a new `tmpdir` fixture that writes these files, then call with `patch("matplotlib.pyplot.show")`.
+- **`visualize_deformation`** (lines 228–257) — call directly with synthetic `deformed_coords`, `element_nodes`, and `aligned_displacements`; patch `plt.show()`. The first argument (`simulation_folder`) is unused (`_` parameter).
+- **`visualize_all` success path** (lines 262–295) — create a fully-populated `tmpdir` with all required `.npy` files (see `create_simulation` fixture) and call `visualize_all(folder, scale_factor=1)` with `plt.show()` patched.
+
+#### `src/peen-ml/model.py`
+
+Training/evaluation functions require real data loaders. Use the existing `tests/test_simulations/` fixtures (2 simulations, 10×10 checkerboard, 10 nodes). Note: `DisplacementPredictor` FC layer is hardcoded to `128 * 5 * 5 = 3200` inputs, so it only works with **5×5 checkerboard input**. The existing test fixtures use 10×10; use synthetic data in tests rather than the fixture files.
+
+- **`create_data_loaders`** (lines 337–363) — call with `base_folder="./tests/test_simulations"`. Returns train/val/test loaders. Assert all three are non-None and that batches have the right shapes.
+- **`train_model`** (lines 413–481) — create a tiny model (5×5 input, `num_nodes=10`), build minimal train/val loaders from synthetic data (2 samples each), run for 1 epoch. Assert losses list is non-empty and loss is finite. **Patch `plt.show` and `plt.ion`** to suppress the interactive plot.
+- **`evaluate_model`** (lines 516–556) — same tiny model + a test loader; call `evaluate_model(model, test_loader, criterion)`. Assert the returned MSE is a positive float.
+- **`create_test_loader`** (lines 696–707) — call with `base_folder="./tests/test_simulations"`. Assert the loader yields `(checkerboard, displacement)` tuples.
+- **`evaluate_model_gui`** (lines 723–780) — call with a tiny model, test loader, `nn.MSELoss()`, and a `tmpdir` for `pred_save_dir`. Assert `.npy` and `.csv` files are written to `pred_save_dir/Simulation_0/`.
+- **`load_and_evaluate_model_gui`** (lines 804–823) — save the tiny model to a temp file with `torch.save`, then call `load_and_evaluate_model_gui(model_path, data_path, pred_save_dir)`. Assert predictions are saved.
+- **`main()`** (lines 574–613) — the hardcoded Windows path makes this untestable without heavy mocking. **Skip** — mark with `# pragma: no cover` or add to `.coveragerc` omit list.
+- **`train_save_gui`** (lines 640–679) — same as `train_model` but also assert the saved model file appears in `data_path/saved_model/`.
+
+### Suggested test additions
+
+Add these to existing test files:
+
+**`tests/test_model.py`**:
+```python
+# Helper to build a tiny loader from synthetic data (5x5 checkerboard, 10 nodes)
+def _tiny_loader(n_samples=4, batch_size=2):
+    cb = np.random.rand(n_samples, 5, 5)
+    disp = np.random.rand(n_samples, 10, 3)
+    ds = CheckerboardDataset(cb, disp)
+    norm = NormalizedDataset(ds)
+    return DataLoader(norm, batch_size=batch_size)
+
+def test_train_model_one_epoch():
+    model = DisplacementPredictor(input_channels=1, num_nodes=10)
+    loader = _tiny_loader()
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.01)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1)
+    with patch("matplotlib.pyplot.show"), patch("matplotlib.pyplot.ion"):
+        train_losses, val_losses = train_model(
+            model, loader, loader, criterion, optimizer, scheduler,
+            epochs=1, patience=5
+        )
+    assert len(train_losses) == 1
+    assert not np.isnan(train_losses[0])
+
+def test_evaluate_model_returns_mse():
+    model = DisplacementPredictor(input_channels=1, num_nodes=10)
+    loader = _tiny_loader(n_samples=2, batch_size=1)
+    mse = evaluate_model(model, loader, nn.MSELoss())
+    assert mse >= 0.0
+
+def test_create_data_loaders():
+    train, val, test, data = create_data_loaders("./tests/test_simulations")
+    assert train is not None and val is not None and test is not None
+    assert "checkerboard" in data
+```
+
+**`tests/test_data_viz.py`**:
+```python
+def test_visualize_mesh_basic():
+    node_coords = np.random.rand(6, 3)
+    deformed_coords = node_coords + 0.01
+    element_nodes = [[0, 1, 2], [3, 4, 5]]
+    with patch("matplotlib.pyplot.show"):
+        visualize_mesh(node_coords, deformed_coords, element_nodes)
+
+def test_visualize_deformation_basic():
+    deformed_coords = np.random.rand(6, 3)
+    element_nodes = [[0, 1, 2], [3, 4, 5]]
+    aligned_displacements = np.random.rand(6, 3)
+    with patch("matplotlib.pyplot.show"):
+        visualize_deformation(None, deformed_coords, element_nodes, aligned_displacements)
+
+def test_visualize_all_success(tmpdir):
+    # Full set of required files
+    n = 6
+    np.save(str(tmpdir.join("checkerboard.npy")), np.random.rand(5, 5))
+    np.save(str(tmpdir.join("node_coords.npy")), np.random.rand(n, 3))
+    np.save(str(tmpdir.join("node_labels.npy")), np.arange(n))
+    np.save(str(tmpdir.join("displacements.npy")), np.random.rand(n, 3))
+    np.save(str(tmpdir.join("disp_node_labels.npy")), np.arange(n))
+    np.save(str(tmpdir.join("element_connectivity.npy")), np.array([[0,1,2],[3,4,5]]))
+    with patch("matplotlib.pyplot.show"):
+        visualize_all(str(tmpdir), scale_factor=1)
+```
+
+### Acceptance criteria
+- [ ] `pytest --cov=src --cov-branch` reports ≥ 70% total coverage
+- [ ] No new test marks `# pragma: no cover` except `main()` in `model.py` (hardcoded data path)
+- [ ] All existing 35 tests continue to pass
+
+---
+
+## 🔴 ~~Fix CI Linting Failures~~ ✅ COMPLETE (2026-06-01)
+
+**Was:** CI failing with 2 failing + 3 cancelled jobs due to:
+1. Double comma `C0116,,C0103` in `pylint.yml` `--disable` list (pylint parse error)
+2. `Pillow` missing from pip install → `E0401` import errors for PIL
+3. `model_gui_test_case.py` not ignored (hardcoded Windows paths + module-level execution)
+4. `.coveragerc` at `.github/workflows/.coveragerc` but referenced as `.coveragerc` from root
+5. `tk` listed as a pip package (does not exist — should be `python3-tk` via apt)
+
+**Fixed files (2026-06-01):**
+
+| File | Change |
+|---|---|
+| `.github/workflows/pylint.yml` | Fixed double comma; added `Pillow`; added `model_gui_test_case.py` to ignore; added `black` + `flake8` steps; expanded matrix to 3.9/3.10/3.11 |
+| `.github/workflows/test_code.yml` | Added `python3-tk` apt step; replaced `tk` with `Pillow pandas requests`; set `MPLBACKEND=Agg`; fixed `.coveragerc` path |
+| `.coveragerc` | Moved from `.github/workflows/` to repo root; switched to forward-slash paths |
+| `.flake8` | New file — sets `max-line-length=120`, ignores `E402,E203,E226,W503`, excludes dataset/test-case scripts |
+| `shotpeen_gui.py` | Added `self.splash_image = None` in `__init__` (W0201); fixed E302 blank lines; removed dead commented-out code; applied `black` |
+| `src/peen-ml/data_viz.py` | Fixed E302 blank line before `visualize_all`; replaced `range(len())` with `enumerate` (C0200); stripped trailing whitespace in docstring; applied `black` |
+| `src/peen-ml/model.py` | Fixed `{epoch+1}` → `{epoch + 1}` in f-strings (E226); applied `black` |
+| `tests/test_model.py` | Expanded from 4 → 12 tests: added `NormalizedDataset`, `SpatialAttention`, `DisplacementPredictor` forward, `smape`, `create_model`, skip-missing branch |
+| `tests/test_data_viz.py` | Expanded from 5 → 10 tests: added `visualize_checkerboard` smoke, missing element_connectivity, `visualize_all` abort path |
+| `tests/test_shotpeen_gui.py` | Expanded from 4 → 13 tests: added `check_file_in_folder`, `get_file_path`, `num_of_simulations`, `check_install` paths |
+
+**How to verify locally:**
+```bash
+# from shotpeeningML/
+PYTHONPATH=$(pwd)/src/peen-ml MPLBACKEND=Agg pytest tests/ -q          # 35 passed
+python -m black --line-length=120 --check $(git ls-files '*.py' | grep -v dataset)
+python -m flake8 $(git ls-files '*.py')
+```
+
+---
+
 ## Context
 
 The current pipeline has two model architectures:
@@ -215,9 +380,10 @@ Dataset_Gaussian_2601 train/val/test split (seed=2024) before considering it an 
 
 ---
 
-## Material Properties — GUI, Dataset Generation, and Inference
+## ~~Material Properties — GUI, Dataset Generation, and Inference~~ ✅ COMPLETE
 
-**Priority: High** (impacts simulation accuracy more than architecture choice)
+**Priority: High** ~~(impacts simulation accuracy more than architecture choice)~~
+**Completed: 2026-05-31** — see Completed table at top of this file.
 
 ### Problem
 

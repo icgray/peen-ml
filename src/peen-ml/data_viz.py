@@ -1,6 +1,6 @@
 """
 This module provides a suite of functions for visualizing and analyzing the results
-of a shot peening simulation or ML prediction. The tools include loading simulation data, 
+of a shot peening simulation or ML prediction. The tools include loading simulation data,
 visualizing checkerboard patterns, computing deformed meshes, and visualizing deformation and stress
 fields.
 
@@ -263,7 +263,7 @@ def visualize_all(folder_path, scale_factor):
     This function runs through the whole visulization workflow
     Args:
         folder_path (String): The folder containing the files to visualize
-        scale_factor (float): The factor to scale the deformation to visualize  
+        scale_factor (float): The factor to scale the deformation to visualize
     """
     print("Step 1: Visualizing Checkerboard Pattern...")
     visualize_checkerboard(folder_path)
@@ -388,7 +388,7 @@ def visualize_stl_stress(stl_surface, stresses_per_face, colormap="jet",
     from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
     s = np.asarray(stresses_per_face, dtype=np.float64)
-    S11, S22, S33, S12 = s[:, 0], s[:, 1], s[:, 2], s[:, 3]
+    S11, S22, _, S12 = s[:, 0], s[:, 1], s[:, 2], s[:, 3]
     von_mises = np.sqrt(S11**2 - S11 * S22 + S22**2 + 3.0 * S12**2)
 
     norm_vm    = (von_mises - von_mises.min()) / ((von_mises.max() - von_mises.min()) + 1e-15)

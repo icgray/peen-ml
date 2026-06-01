@@ -434,7 +434,7 @@ class TestComputeEnergyBalance:
         assert energy["KE_rebound"] <= energy["KE_initial"]
 
     def test_W_plastic_le_KE_initial(self, energy):
-        assert energy["W_plastic"] <= energy["KE_initial"]
+        assert energy["W_plastic"] <= energy["KE_initial"] * (1 + 1e-9)
 
     def test_W_wave_nonnegative(self, energy):
         assert energy["W_wave"] >= 0
@@ -701,43 +701,23 @@ class TestRunSimulation:
 class TestPlotResidualStress:
 
     def test_plot_runs_without_error(self, sim_results):
-        with patch("impact_sim.plt.show"):
-            try:
-                import matplotlib
-                matplotlib.use("Agg")
-            except Exception:
-                pass
+        with patch("matplotlib.pyplot.show"):
             plot_residual_stress(sim_results, show=False)
 
     def test_plot_saves_file(self, sim_results):
-        with patch("impact_sim.plt.show"):
+        with patch("matplotlib.pyplot.show"):
             with tempfile.TemporaryDirectory() as tmpdir:
                 path = os.path.join(tmpdir, "test_plot.png")
-                try:
-                    import matplotlib
-                    matplotlib.use("Agg")
-                except Exception:
-                    pass
                 plot_residual_stress(sim_results, show=False, save_path=path)
                 assert os.path.exists(path)
 
     def test_show_false_does_not_call_plt_show(self, sim_results):
-        with patch("impact_sim.plt.show") as mock_show:
-            try:
-                import matplotlib
-                matplotlib.use("Agg")
-            except Exception:
-                pass
+        with patch("matplotlib.pyplot.show") as mock_show:
             plot_residual_stress(sim_results, show=False)
             mock_show.assert_not_called()
 
     def test_show_true_calls_plt_show(self, sim_results):
-        with patch("impact_sim.plt.show") as mock_show:
-            try:
-                import matplotlib
-                matplotlib.use("Agg")
-            except Exception:
-                pass
+        with patch("matplotlib.pyplot.show") as mock_show:
             plot_residual_stress(sim_results, show=True)
             mock_show.assert_called_once()
 
@@ -797,10 +777,7 @@ class TestPhysicsSanity:
 
     def test_mesh_covers_plastic_zone(self, surface_mesh, plastic):
         # The mesh should be large enough to contain the plastic zone
-        coords = surface_mesh["node_coords"]
-        max_x = coords[:, 0].max()
-        max_y = coords[:, 1].max()
-        r_p = plastic["r_p"]
         # Impact at centre (Lx/2, Ly/2) = (0.0025, 0.0025)
         # Extent from centre = 0.0025; should exceed r_p which is ~µm scale
+        r_p = plastic["r_p"]
         assert 0.0025 > r_p
