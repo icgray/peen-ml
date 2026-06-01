@@ -47,3 +47,26 @@ where = ["src"]
 
 [tool.setuptools.dynamic]
 version = { attr = "CSE583_ShotPeenWithML.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["src/peen-ml"]
+omit = [
+    "src/peen-ml/dataset1_script.py",
+    "src/peen-ml/dataset2_script.py",
+    "src/peen-ml/taichi_impact_sim.py",
+    "src/peen-ml/model_gui_test_case.py",
+    "src/peen-ml/*.ipynb",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]

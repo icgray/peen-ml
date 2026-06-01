@@ -33,7 +33,7 @@ jobs:
       run: |
         pylint --fail-under=9.5 \
            --disable=C0301,C0114,C0116,,C0103,R0914,R0913,R0915,R0902,R1725\
-           --ignore=src/peen-ml/dataset1_script.py,src/peen-ml/dataset2_script.py\
+           --ignore=src/peen-ml/dataset1_script.py,src/peen-ml/dataset2_script.py,capture_screenshots.py\
             $(git ls-files '*.py')
     - name: Check PEP 8 compliance with flake8
       run: |

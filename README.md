@@ -1,5 +1,8 @@
 # peen-ml
 
+[![Pylint](https://github.com/onestr1/peen-ml/actions/workflows/pylint.yml/badge.svg)](https://github.com/onestr1/peen-ml/actions/workflows/pylint.yml)
+[![codecov](https://codecov.io/gh/onestr1/peen-ml/branch/main/graph/badge.svg)](https://codecov.io/gh/onestr1/peen-ml)
+
 **Machine learning solution to predict deformation from shot peening as an alternative to dynamic simulation.** This repository provides tools and workflows to input shot peening parameters and geometry, train machine learning (ML) models to predict resulting deformations, visualize outcomes, and interact with the models through a user-friendly GUI. It aims to streamline the process of exploring and optimizing shot peening recipes, reducing reliance on time-consuming finite element analysis (FEA) simulations.
 
 ## Table of Contents
