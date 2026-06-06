@@ -270,19 +270,19 @@ class TestModelArchitectureVariants:
         assert torch.isfinite(out_mat).all()
         assert out_mat.shape == (1, 100, 3)
 
-    def test_material_conditioning_none_raises_hole(self):
+    def test_material_conditioning_none_works_after_fix(self):
         """
-        KNOWN HOLE: DisplacementPredictor(mat_dim=7).forward(x, None) raises a
-        RuntimeError (shape mismatch in the FC layer) rather than giving a
-        helpful message.  There is no guard in model.forward() against None
-        when mat_dim > 0.
+        FIX VERIFIED: DisplacementPredictor(mat_dim=7).forward(x, None) now pads
+        a zero mat tensor automatically instead of raising RuntimeError.
         """
         model = M.DisplacementPredictor(
             input_channels=1, num_nodes=100, checkerboard_size=5, mat_dim=7
         )
         x = torch.ones(1, 1, 5, 5)
-        with pytest.raises(RuntimeError):
-            model(x, None)  # crashes — document this as a hole
+        with torch.no_grad():
+            out = model(x, None)   # should NOT raise after the fix
+        assert out.shape == (1, 100, 3)
+        assert torch.isfinite(out).all()
 
     def test_infer_grid_size_all_sizes(self):
         for G in [3, 5, 8, 10, 15, 20]:
@@ -302,14 +302,12 @@ class TestSmapeNaNHole:
     This corrupts sMAPE reporting for simulations with near-zero displacement.
     """
 
-    def test_smape_both_zero_is_nan(self):
-        """Document: smape(0, 0) returns NaN — this is the hole."""
+    def test_smape_both_zero_is_finite_after_fix(self):
+        """FIX VERIFIED: smape(0, 0) now returns 0.0 (not NaN) after adding clamp(min=1e-8)."""
         y = torch.zeros(5, 10, 3)
         result = M.smape(y, y)
-        assert torch.isnan(result), (
-            "If this assertion fails, the hole has been fixed — "
-            "update this test to assert isfinite(result) == 0.0 instead."
-        )
+        assert torch.isfinite(result), "smape(0,0) must be finite after the zero-denom fix"
+        assert float(result) == pytest.approx(0.0, abs=1e-6)
 
     def test_smape_nonzero_is_finite(self):
         """smape with non-zero inputs must not produce NaN."""
@@ -342,23 +340,26 @@ class TestDegenerateDatasetSplit:
     """
 
     @pytest.mark.parametrize("n_sims", [2, 3, 4, 5, 6])
-    def test_small_dataset_empty_val_split(self, tmp_path, n_sims):
+    def test_small_dataset_val_split_no_longer_crashes(self, tmp_path, n_sims):
         """
-        KNOWN HOLE: n_sims < 7 produces an empty val split (int(0.15*n)==0).
-        NormalizedDataset.__init__ then calls base_dataset[0] on an empty
-        Subset → IndexError before train_model is even reached.
-
-        Root cause: NormalizedDataset._has_mat detection always indexes element 0
-        regardless of whether the dataset is empty.
+        FIX VERIFIED: create_data_loaders no longer crashes with n_sims < 7.
+        NormalizedDataset.__init__ now guards len(base_dataset) > 0 before
+        accessing base_dataset[0].  The val_loader will be empty but no
+        IndexError is raised.
         """
         rng = np.random.default_rng(n_sims)
         root = _make_synthetic_dataset(
             tmp_path / f"ds_{n_sims}", "Ti-6Al-4V", "steel",
             n_sims=n_sims, write_params=False,
         )
-        # The crash happens inside create_data_loaders, not train_model
-        with pytest.raises((IndexError, ZeroDivisionError)):
-            M.create_data_loaders(str(root), batch_size=4)
+        # create_data_loaders now succeeds — val_loader may be empty but no crash
+        train_loader, val_loader, test_loader, _ = M.create_data_loaders(
+            str(root), batch_size=4
+        )
+        assert len(train_loader) >= 0  # no crash is the key assertion
+        # Callers should check len(val_loader) == 0 before training
+        if n_sims < 7:
+            assert len(val_loader) == 0, "val split should be empty for n_sims < 7"
 
     def test_minimum_viable_split(self, tmp_path):
         """n_sims = 7 is the minimum that avoids an empty val split."""
