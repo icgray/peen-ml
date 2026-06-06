@@ -607,7 +607,7 @@ class TestSIRENPredictor:
 
     def test_no_nan_5_epochs(self, tiny_dataset):
         """Training for 5 epochs produces finite loss at every step."""
-        train_loader, _, _, _ = M.create_siren_loaders(
+        train_loader, _, _, _, _ = M.create_siren_loaders(
             str(tiny_dataset), k_nodes=16, batch_size=4
         )
         model  = M.SIRENPredictor(input_channels=1, latent_dim=32,
@@ -645,7 +645,7 @@ class TestSIRENPredictor:
 class TestSIRENLoaders:
     def test_loader_shapes(self, tiny_dataset):
         """create_siren_loaders returns (K,2) coords and (B,K,3) displacements."""
-        train, _, _, N_total = M.create_siren_loaders(
+        train, _, _, N_total, _ = M.create_siren_loaders(
             str(tiny_dataset), k_nodes=16, batch_size=4
         )
         cbs, coords, disps = next(iter(train))
@@ -656,7 +656,7 @@ class TestSIRENLoaders:
 
     def test_different_k_nodes(self, tiny_dataset):
         """k_nodes parameter controls the subsampled coord count."""
-        train, _, _, _ = M.create_siren_loaders(
+        train, _, _, _, _ = M.create_siren_loaders(
             str(tiny_dataset), k_nodes=8, batch_size=4
         )
         _, coords, disps = next(iter(train))
