@@ -14,6 +14,10 @@ import sys
 import numpy as np
 import pytest
 
+# Force the non-interactive Agg backend before any matplotlib import so that
+# visualisation tests run correctly in headless CI (no $DISPLAY on Linux).
+os.environ.setdefault("MPLBACKEND", "Agg")
+
 # tests/ is already on sys.path when pytest runs, but add it explicitly so
 # conftest can import helpers even when run directly.
 sys.path.insert(0, os.path.dirname(__file__))
@@ -142,9 +146,13 @@ def shuffled_labels_sim_folder(tmp_path_factory):
 
 @pytest.fixture
 def tk_root():
-    """Hidden Tk root window; destroyed after each test automatically."""
+    """Hidden Tk root window; destroyed after each test automatically.
+    Skips automatically in headless CI environments (no $DISPLAY on Linux)."""
     import tkinter as tk
-    root = tk.Tk()
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("No display available (headless CI)")
     root.withdraw()
     yield root
     try:

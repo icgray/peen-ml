@@ -122,30 +122,38 @@ class TestBrowseSignatures:
 # 4. num_of_simulations
 # ===========================================================================
 
+def _make_tk_root():
+    """Create a hidden Tk root, or skip the test if no display is available."""
+    import tkinter as tk
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("No display available (headless CI)")
+    root.withdraw()
+    return root
+
+
 class TestNumOfSimulations:
     def test_counts_real_sample(self):
-        import tkinter as tk
-        root = tk.Tk(); root.withdraw()
+        root = _make_tk_root()
         app = gui.App(root)
         count = app.num_of_simulations(SAMPLE_DATASET)
         root.destroy()
         assert count == 31
 
     def test_empty_dir_returns_zero(self, tmp_path):
-        import tkinter as tk
-        root = tk.Tk(); root.withdraw()
+        root = _make_tk_root()
         app = gui.App(root)
         count = app.num_of_simulations(str(tmp_path))
         root.destroy()
         assert count == 0
 
     def test_ignores_non_simulation_folders(self, tmp_path):
-        import tkinter as tk
         (tmp_path / "Simulation_0").mkdir()
         (tmp_path / "Simulation_1").mkdir()
         (tmp_path / "not_a_sim").mkdir()
         (tmp_path / "Simulation_abc").mkdir()
-        root = tk.Tk(); root.withdraw()
+        root = _make_tk_root()
         app = gui.App(root)
         count = app.num_of_simulations(str(tmp_path))
         root.destroy()
