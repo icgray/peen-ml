@@ -65,7 +65,9 @@ from impact_sim import (  # noqa: E402
     ShotPeenParams,
     compute_contact_params,
     compute_plastic_zone,
+    compute_stress_field,
     map_displacements,
+    map_stresses,
 )
 
 
@@ -174,6 +176,59 @@ def _shen_atluri_single_impact(
     ic = np.array([impact_center_xy[0], impact_center_xy[1], 0.0])
     _, disp = map_displacements(mesh, contact, plastic, params, impact_center=ic)
     return disp
+
+
+# ---------------------------------------------------------------------------
+# 2b.  Shen-Atluri stress superposition (node-level)
+# ---------------------------------------------------------------------------
+
+
+def _compute_sa_nodal_stresses(
+    params: ShotPeenParams,
+    node_coords: np.ndarray,
+    shot_positions: np.ndarray,
+) -> Optional[np.ndarray]:
+    """Superpose Shen-Atluri residual stresses for all shots, returning (N, 4) node-level array.
+
+    For each shot, we use map_stresses() with a minimal mesh dict built from node_coords
+    (treating each node as its own single-node element for the centroid calculation).
+    Because map_stresses() expects element connectivity we build a trivial one-element-per-node
+    mesh so the centroid coincides with the node itself.
+
+    Returns
+    -------
+    stresses : (N, 4) float32  [S11, S22, S33, S12] in Pa, or None on failure.
+    """
+    try:
+        N = len(node_coords)
+        total = np.zeros((N, 4), dtype=np.float64)
+
+        contact = compute_contact_params(params)
+        plastic = compute_plastic_zone(params)
+        stress_field = compute_stress_field(contact, params)
+
+        # Build a trivial mesh: each node is a 1-node "element" at its own centroid
+        node_labels = np.arange(N, dtype=np.int32)
+        elem_labels = np.arange(N, dtype=np.int32)
+        # connectivity: each element references only its own node
+        connectivity = node_labels.reshape(-1, 1)
+
+        for shot_xy in shot_positions:
+            ic = np.array([shot_xy[0], shot_xy[1], 0.0])
+            mesh = {
+                "node_coords": node_coords,
+                "node_labels": node_labels,
+                "element_connectivity": connectivity,
+                "element_labels": elem_labels,
+                "impact_center": ic,
+            }
+            _, elem_stresses = map_stresses(mesh, stress_field, plastic, params, impact_center=ic)
+            total += elem_stresses.astype(np.float64)
+
+        return total.astype(np.float32)
+    except Exception as exc:  # pylint: disable=broad-except
+        print(f"_compute_sa_nodal_stresses: {exc}")
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -365,7 +420,30 @@ def compare_to_dataset(
             results[label][comp] = _metrics(pred, gt, i)
 
     if out_path:
-        _plot_comparison(nc, gt, pred_sa, pred_sh, shots, data["V"], data["D_mm"], out_path)
+        # Load ground-truth nodal stresses if available
+        gt_stress_path = os.path.join(sim_dir, "nodal_stresses.npy")
+        gt_nodal_stresses = None
+        if os.path.exists(gt_stress_path):
+            try:
+                gt_nodal_stresses = np.load(gt_stress_path)
+            except Exception:
+                pass
+
+        # Compute SA nodal stresses via superposition
+        sa_nodal_stresses = _compute_sa_nodal_stresses(params, nc, shots)
+
+        _plot_comparison(
+            nc,
+            gt,
+            pred_sa,
+            pred_sh,
+            shots,
+            data["V"],
+            data["D_mm"],
+            out_path,
+            gt_nodal_stresses=gt_nodal_stresses,
+            sa_nodal_stresses=sa_nodal_stresses,
+        )
 
     return results
 
@@ -379,14 +457,27 @@ def _plot_comparison(
     V: float,
     D_mm: float,
     out_path: str,
+    gt_nodal_stresses: Optional[np.ndarray] = None,
+    sa_nodal_stresses: Optional[np.ndarray] = None,
 ) -> None:
-    """Save a 3×3 figure: columns = GT / Shen-Atluri / Sherafatnia, rows = ux, uz, cross-section."""
+    """Save a comparison figure: columns = GT / Shen-Atluri / Sherafatnia.
+
+    Rows:
+      0: ux heat map
+      1: uz heat map
+      2: cross-section along x-midline
+      3: von Mises stress (if any stress data is available, else skipped)
+    """
     comps = [("ux", 0, "In-plane displacement $u_x$"), ("uz", 2, "Out-of-plane displacement $u_z$")]
     nx = np.unique(np.round(node_coords[:, 0], 10))
     ny = np.unique(np.round(node_coords[:, 1], 10))
     H, W = len(nx), len(ny)
 
-    fig, axes = plt.subplots(3, 3, figsize=(13, 10))
+    # Determine whether we have stress data to show a 4th row
+    has_stress = (gt_nodal_stresses is not None) or (sa_nodal_stresses is not None)
+    n_rows = 4 if has_stress else 3
+    fig_h = 13 if has_stress else 10
+    fig, axes = plt.subplots(n_rows, 3, figsize=(13, fig_h))
     cmap = "RdBu_r"
 
     for row, (cname, ci, clabel) in enumerate(comps):
@@ -425,7 +516,7 @@ def _plot_comparison(
             ax.set_yticks([])
             plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04).set_label("µm", fontsize=7)
 
-    # Row 3: cross-section comparison along x-midline
+    # Row 2: cross-section comparison along x-midline
     ax_cs = axes[2, :]
     mid_row = H // 2
     try:
@@ -446,6 +537,56 @@ def _plot_comparison(
     except Exception:
         for ax in ax_cs:
             ax.axis("off")
+
+    # Row 3 (optional): von Mises stress heat maps
+    if has_stress:
+
+        def _von_mises(stresses_n4):
+            if stresses_n4 is None:
+                return None
+            s = stresses_n4
+            S11, S22 = s[:, 0] * 1e-6, s[:, 1] * 1e-6  # Pa -> MPa
+            S12 = s[:, 3] * 1e-6 if s.shape[1] > 3 else np.zeros_like(S11)
+            return np.sqrt(S11**2 - S11 * S22 + S22**2 + 3.0 * S12**2)
+
+        vm_gt = _von_mises(gt_nodal_stresses)
+        vm_sa = _von_mises(sa_nodal_stresses)
+
+        stress_datasets = [
+            ("Ground Truth\nvon Mises (MPa)", vm_gt),
+            ("Shen & Atluri\nvon Mises (MPa)", vm_sa),
+            ("Sherafatnia\n(no stress model)", None),
+        ]
+        # Determine shared colour scale from available data
+        all_vm = [v for _, v in stress_datasets if v is not None]
+        vm_vmax = max((v.max() for v in all_vm), default=1.0)
+        vm_vmax = max(vm_vmax, 0.01)
+
+        for col, (title, vm) in enumerate(stress_datasets):
+            ax = axes[3, col]
+            ax.set_xticks([])
+            ax.set_yticks([])
+            if vm is not None:
+                try:
+                    grid = vm.reshape(H, W)
+                except ValueError:
+                    grid = np.full((H, W), np.nan)
+                im = ax.imshow(grid, origin="lower", aspect="equal", cmap="plasma", vmin=0, vmax=vm_vmax)
+                plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04).set_label("MPa", fontsize=7)
+                ax.set_title(title, fontsize=8)
+            else:
+                ax.set_facecolor("#f0f0f0")
+                ax.text(
+                    0.5,
+                    0.5,
+                    "No stress data\navailable",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                    fontsize=10,
+                    color="#888888",
+                )
+                ax.set_title(title, fontsize=8)
 
     fig.suptitle(
         f"Analytical vs Ground Truth  |  V={V:.0f} m/s  D={D_mm:.1f} mm  " f"N_shots={len(shot_positions)}",

@@ -228,6 +228,132 @@ def visualize_deformation(_, deformed_coords, element_nodes, aligned_displacemen
         print(f"Error visualizing deformation: {e}")
 
 
+def render_result_panels(folder_path: str, save_path: str) -> str:
+    """Render a combined deformation + stress heat-map figure, save to save_path.
+
+    Returns save_path so callers can display it.
+
+    Panels (2 rows × 3 cols):
+      Row 1: ux heat map | uz heat map | deformation magnitude
+      Row 2: von Mises stress | S11 (radial/x residual) | S22 (hoop/y residual)
+
+    Data sources (all node-level, from folder_path):
+      node_coords.npy       (N, 3) -- grid positions
+      displacements.npy     (N, 3) -- [ux, uy, uz] in metres
+      nodal_stresses.npy    (N, 4) -- [S11, S22, S33, S12] in Pa (optional)
+
+    - Use viridis for displacements, RdBu_r centred at 0 for signed components
+    - Use plasma for stress magnitudes
+    - All panels: units in µm for displacement, MPa for stress
+    - Include colorbars with units
+    - DPI=150, bbox_inches='tight'
+    - If nodal_stresses.npy is missing, fill stress panels with a 'No stress data' text
+    """
+    node_coords = load_data(os.path.join(folder_path, "node_coords.npy"), "node_coords")
+    displacements = load_data(os.path.join(folder_path, "displacements.npy"), "displacements")
+
+    if node_coords is None or displacements is None:
+        print(f"render_result_panels: required files missing in {folder_path}")
+        return save_path
+
+    try:
+        nx = np.unique(np.round(node_coords[:, 0], 10))
+        ny = np.unique(np.round(node_coords[:, 1], 10))
+        H, W = len(nx), len(ny)
+
+        ux_um = displacements[:, 0] * 1e6
+        uz_um = displacements[:, 2] * 1e6
+        mag_um = np.linalg.norm(displacements, axis=1) * 1e6
+
+        def _grid(vals):
+            try:
+                return vals.reshape(H, W)
+            except ValueError:
+                return np.full((H, W), np.nan)
+
+        nodal_stresses = load_data(os.path.join(folder_path, "nodal_stresses.npy"), "nodal_stresses")
+        has_stress = nodal_stresses is not None and nodal_stresses.ndim == 2 and nodal_stresses.shape[1] >= 3
+
+        fig, axes = plt.subplots(2, 3, figsize=(14, 8))
+
+        # --- Row 1: displacement components ---
+        vmax_ux = max(np.abs(ux_um).max(), 0.01)
+        im0 = axes[0, 0].imshow(
+            _grid(ux_um), origin="lower", aspect="equal", cmap="RdBu_r", vmin=-vmax_ux, vmax=vmax_ux
+        )
+        axes[0, 0].set_title("$u_x$ (in-plane)", fontsize=9)
+        plt.colorbar(im0, ax=axes[0, 0], fraction=0.046, pad=0.04).set_label("µm", fontsize=8)
+
+        vmax_uz = max(np.abs(uz_um).max(), 0.01)
+        im1 = axes[0, 1].imshow(
+            _grid(uz_um), origin="lower", aspect="equal", cmap="RdBu_r", vmin=-vmax_uz, vmax=vmax_uz
+        )
+        axes[0, 1].set_title("$u_z$ (out-of-plane)", fontsize=9)
+        plt.colorbar(im1, ax=axes[0, 1], fraction=0.046, pad=0.04).set_label("µm", fontsize=8)
+
+        im2 = axes[0, 2].imshow(_grid(mag_um), origin="lower", aspect="equal", cmap="viridis")
+        axes[0, 2].set_title("Deformation magnitude", fontsize=9)
+        plt.colorbar(im2, ax=axes[0, 2], fraction=0.046, pad=0.04).set_label("µm", fontsize=8)
+
+        for ax in axes[0]:
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+        # --- Row 2: stress panels ---
+        if has_stress:
+            S11 = nodal_stresses[:, 0] * 1e-6  # Pa -> MPa
+            S22 = nodal_stresses[:, 1] * 1e-6
+            S12 = nodal_stresses[:, 3] * 1e-6 if nodal_stresses.shape[1] > 3 else np.zeros_like(S11)
+            von_mises = np.sqrt(S11**2 - S11 * S22 + S22**2 + 3.0 * S12**2)
+
+            im3 = axes[1, 0].imshow(_grid(von_mises), origin="lower", aspect="equal", cmap="plasma")
+            axes[1, 0].set_title("von Mises stress", fontsize=9)
+            plt.colorbar(im3, ax=axes[1, 0], fraction=0.046, pad=0.04).set_label("MPa", fontsize=8)
+
+            vmax_s11 = max(np.abs(S11).max(), 0.01)
+            im4 = axes[1, 1].imshow(
+                _grid(S11), origin="lower", aspect="equal", cmap="RdBu_r", vmin=-vmax_s11, vmax=vmax_s11
+            )
+            axes[1, 1].set_title("S11 (radial residual)", fontsize=9)
+            plt.colorbar(im4, ax=axes[1, 1], fraction=0.046, pad=0.04).set_label("MPa", fontsize=8)
+
+            vmax_s22 = max(np.abs(S22).max(), 0.01)
+            im5 = axes[1, 2].imshow(
+                _grid(S22), origin="lower", aspect="equal", cmap="RdBu_r", vmin=-vmax_s22, vmax=vmax_s22
+            )
+            axes[1, 2].set_title("S22 (hoop residual)", fontsize=9)
+            plt.colorbar(im5, ax=axes[1, 2], fraction=0.046, pad=0.04).set_label("MPa", fontsize=8)
+        else:
+            for ax in axes[1]:
+                ax.set_facecolor("#f0f0f0")
+                ax.text(
+                    0.5,
+                    0.5,
+                    "No stress data",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                    fontsize=11,
+                    color="#888888",
+                )
+                ax.set_xticks([])
+                ax.set_yticks([])
+
+        for ax in axes[1]:
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+        fig.suptitle(f"Deformation & Stress — {os.path.basename(folder_path)}", fontsize=10)
+        plt.tight_layout()
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        print(f"render_result_panels: saved -> {save_path}")
+    except Exception as e:  # pylint: disable=broad-except
+        print(f"render_result_panels: error — {e}")
+
+    return save_path
+
+
 def visualize_all(folder_path, scale_factor):
     """
     This function runs through the whole visulization workflow
@@ -255,6 +381,10 @@ def visualize_all(folder_path, scale_factor):
     print("Step 5: Visualizing Deformation Magnitude on Deformed Mesh...")
     aligned_displacements = deformed_coords - node_coords
     visualize_deformation(folder_path, deformed_coords, element_nodes, aligned_displacements)
+
+    print("Step 6: Rendering combined deformation + stress heat-map panels...")
+    png_path = os.path.join(folder_path, "result_panels.png")
+    render_result_panels(folder_path, png_path)
 
 
 def main():

@@ -456,6 +456,320 @@ class App:
             relief="flat",
         ).pack(anchor="e")
 
+        # -- Analytical Compare card (full width, row 8) --
+        ac_frame = tk.Frame(main_frame, bd=2, relief="groove", padx=12, pady=10)
+        ac_frame.grid(row=8, column=0, columnspan=2, padx=16, pady=(4, 10), sticky="ew")
+        ac_frame.columnconfigure(0, weight=1)
+        tk.Label(
+            ac_frame,
+            text="Analytical Compare",
+            font=("Arial", 13, "bold"),
+            fg="#117a65",
+        ).pack(anchor="w")
+        tk.Label(
+            ac_frame,
+            text=(
+                "Compare Shen & Atluri (elastic-plastic) vs Sherafatnia (elastic) analytical models.\n"
+                "Given shot positions from a dataset, compute the analytical displacement field\n"
+                "and internal stress, then compare against the simulator ground truth.\n"
+                "Shows deformation + stress heat maps side-by-side for both models."
+            ),
+            font=HINT_FONT,
+            fg=HINT_COLOR,
+            justify="left",
+        ).pack(anchor="w", pady=(4, 8))
+        tk.Button(
+            ac_frame,
+            text="Analytical Compare  ->",
+            command=self.analytical_dialog,
+            width=22,
+            height=2,
+            bg="#117a65",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            relief="flat",
+        ).pack(anchor="e")
+
+    # ------------------------------------------------------------------
+    # Analytical Compare dialog
+    # ------------------------------------------------------------------
+
+    def analytical_dialog(self):
+        """Open the Analytical Compare dialog (Shen-Atluri vs Sherafatnia)."""
+        import analytical_mode as _am  # lazy import to avoid circular imports at startup
+        import tempfile
+        from tkinter import scrolledtext
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Analytical Compare")
+        dialog.geometry("1100x860")
+        dialog.resizable(True, True)
+        dialog.transient(self.root)
+        dialog.lift()
+        dialog.focus_force()
+
+        # ---- Scrollable canvas ----
+        canvas = tk.Canvas(dialog, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(dialog, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        outer = tk.Frame(canvas, padx=18, pady=12)
+        canvas_window = canvas.create_window((0, 0), window=outer, anchor="nw")
+
+        def _on_frame_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def _on_canvas_configure(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+
+        outer.bind("<Configure>", _on_frame_configure)
+        canvas.bind("<Configure>", _on_canvas_configure)
+        outer.columnconfigure(0, weight=1)
+
+        # ---- Page title ----
+        tk.Label(
+            outer,
+            text="Analytical Model Comparison",
+            font=("Arial", 15, "bold"),
+            fg="#117a65",
+        ).grid(row=0, column=0, sticky="w", pady=(4, 2))
+        tk.Label(
+            outer,
+            text=(
+                "Compare Shen & Atluri (elastic-plastic) vs Sherafatnia (elastic) analytical models "
+                "against the simulator ground truth."
+            ),
+            font=HINT_FONT,
+            fg=HINT_COLOR,
+            justify="left",
+            wraplength=900,
+        ).grid(row=1, column=0, sticky="w", pady=(0, 6))
+        ttk.Separator(outer, orient="horizontal").grid(row=2, column=0, sticky="ew", pady=(0, 8))
+
+        # ---- Section 1: Dataset folder ----
+        sec1 = _section(outer, row=3, title="Dataset")
+        dataset_var = tk.StringVar()
+        ds_row = tk.Frame(sec1)
+        ds_row.grid(row=1, column=0, columnspan=3, sticky="ew", pady=4)
+        ds_row.columnconfigure(0, weight=1)
+        tk.Entry(ds_row, textvariable=dataset_var, font=BODY_FONT).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        tk.Button(
+            ds_row,
+            text="Browse...",
+            width=10,
+            command=lambda: self.browse_directory(dataset_var, parent=dialog),
+        ).grid(row=0, column=1)
+
+        # ---- Section 2: Simulation selector ----
+        sec2 = _section(outer, row=4, title="Simulation")
+        mode_var = tk.StringVar(value="single")
+        sim_idx_var = tk.StringVar(value="0")
+        batch_n_var = tk.StringVar(value="10")
+
+        mode_frame = tk.Frame(sec2)
+        mode_frame.grid(row=1, column=0, columnspan=3, sticky="w", pady=(4, 2))
+        tk.Radiobutton(mode_frame, text="Single simulation", variable=mode_var, value="single", font=BODY_FONT).pack(
+            side="left", padx=(0, 16)
+        )
+        tk.Radiobutton(mode_frame, text="Batch (N random sims)", variable=mode_var, value="batch", font=BODY_FONT).pack(
+            side="left"
+        )
+
+        param_frame = tk.Frame(sec2)
+        param_frame.grid(row=2, column=0, columnspan=3, sticky="w", pady=4)
+        tk.Label(param_frame, text="Sim index:", font=BODY_FONT).pack(side="left", padx=(0, 4))
+        tk.Spinbox(param_frame, textvariable=sim_idx_var, from_=0, to=9999, width=6, font=BODY_FONT).pack(
+            side="left", padx=(0, 20)
+        )
+        tk.Label(param_frame, text="N (batch):", font=BODY_FONT).pack(side="left", padx=(0, 4))
+        tk.Spinbox(param_frame, textvariable=batch_n_var, from_=1, to=9999, width=6, font=BODY_FONT).pack(side="left")
+
+        # ---- Section 3: Options ----
+        sec3 = _section(outer, row=5, title="Options")
+        sequential_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            sec3,
+            text="Sequential work-hardening mode",
+            variable=sequential_var,
+            font=BODY_FONT,
+        ).grid(row=1, column=0, sticky="w", pady=4)
+
+        # ---- Section 4: Run + Results ----
+        sec4 = _section(outer, row=6, title="Run + Results")
+
+        run_btn = tk.Button(
+            sec4,
+            text="Run Analysis",
+            font=("Arial", 11, "bold"),
+            bg="#117a65",
+            fg="white",
+            relief="flat",
+            width=18,
+            height=2,
+        )
+        run_btn.grid(row=1, column=0, sticky="w", pady=(6, 4))
+
+        progress_lbl = tk.Label(sec4, text="", font=BODY_FONT, fg=INFO_COLOR)
+        progress_lbl.grid(row=1, column=1, sticky="w", padx=(12, 0))
+
+        # Scrollable results frame for images
+        results_outer = tk.Frame(sec4, bd=1, relief="sunken")
+        results_outer.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(6, 4))
+        results_outer.columnconfigure(0, weight=1)
+
+        results_canvas = tk.Canvas(results_outer, height=620, highlightthickness=0)
+        results_sb = ttk.Scrollbar(results_outer, orient="vertical", command=results_canvas.yview)
+        results_canvas.configure(yscrollcommand=results_sb.set)
+        results_sb.pack(side="right", fill="y")
+        results_canvas.pack(side="left", fill="both", expand=True)
+
+        results_frame = tk.Frame(results_canvas)
+        results_win = results_canvas.create_window((0, 0), window=results_frame, anchor="nw")
+
+        def _on_results_resize(event):
+            results_canvas.configure(scrollregion=results_canvas.bbox("all"))
+
+        def _on_results_canvas_resize(event):
+            results_canvas.itemconfig(results_win, width=event.width)
+
+        results_frame.bind("<Configure>", _on_results_resize)
+        results_canvas.bind("<Configure>", _on_results_canvas_resize)
+
+        # Metrics text box
+        metrics_box = scrolledtext.ScrolledText(sec4, height=8, font=("Courier", 9), state="disabled", bg="#f8f8f8")
+        metrics_box.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(4, 4))
+
+        def _show_image(fig_path):
+            """Display a PNG inside results_frame."""
+            try:
+                img = Image.open(fig_path)
+                img.thumbnail((1050, 600))
+                photo = ImageTk.PhotoImage(img)
+                lbl = tk.Label(results_frame, image=photo)
+                lbl.image = photo  # keep reference
+                lbl.pack(pady=4)
+                outer.update_idletasks()
+                canvas.configure(scrollregion=canvas.bbox("all"))
+            except Exception as exc:  # pylint: disable=broad-except
+                tk.Label(results_frame, text=f"Could not load figure: {exc}", fg=ERR_COLOR).pack()
+
+        def _write_metrics(text):
+            metrics_box.config(state="normal")
+            metrics_box.delete("1.0", tk.END)
+            metrics_box.insert(tk.END, text)
+            metrics_box.config(state="disabled")
+
+        def _do_run():
+            dataset_dir = dataset_var.get().strip()
+            if not dataset_dir or not os.path.isdir(dataset_dir):
+                messagebox.showerror("Invalid folder", "Please browse to a valid dataset folder.", parent=dialog)
+                return
+
+            sim_dirs = sorted(
+                [
+                    d
+                    for d in os.listdir(dataset_dir)
+                    if d.startswith("Simulation_") and d[len("Simulation_") :].isdigit()
+                ]
+            )
+            if not sim_dirs:
+                messagebox.showerror(
+                    "No simulations found",
+                    "The selected folder contains no Simulation_N/ subdirectories.",
+                    parent=dialog,
+                )
+                return
+
+            run_btn.config(state="disabled", text="Running...")
+            progress_lbl.config(text="Running...", fg=INFO_COLOR)
+
+            # Clear previous results
+            for widget in results_frame.winfo_children():
+                widget.destroy()
+            _write_metrics("")
+
+            sequential = sequential_var.get()
+            mode = mode_var.get()
+
+            def _run():
+                try:
+                    if mode == "single":
+                        sim_idx = int(sim_idx_var.get())
+                        sim_dir = os.path.join(dataset_dir, f"Simulation_{sim_idx}")
+                        if not os.path.isdir(sim_dir):
+                            dialog.after(
+                                0,
+                                lambda: messagebox.showerror(
+                                    "Not found",
+                                    f"Simulation_{sim_idx} not found in {dataset_dir}",
+                                    parent=dialog,
+                                ),
+                            )
+                            return
+
+                        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                        fig_path = tmp.name
+                        tmp.close()
+
+                        results = _am.compare_to_dataset(sim_dir, out_path=fig_path, sequential=sequential)
+
+                        # Build metrics text
+                        lines = [f"{'Model':<14s}  {'comp':>4s}  {'r':>7s}  {'RMSE µm':>8s}  {'n nodes':>8s}"]
+                        lines.append("-" * 52)
+                        for model in ("shen_atluri", "sherafatnia"):
+                            for comp in ("ux", "uy", "uz"):
+                                m = results[model][comp]
+                                r_s = f"{m['r']:>+7.4f}" if not (m["r"] != m["r"]) else "     nan"
+                                rmse_s = f"{m['rmse_um']:>8.2f}" if not (m["rmse_um"] != m["rmse_um"]) else "     nan"
+                                lines.append(f"  {model:<14s}  {comp:>4s}  {r_s}  {rmse_s}  {m['n']:>8d}")
+                        metrics_text = "\n".join(lines)
+
+                        dialog.after(0, lambda: _write_metrics(metrics_text))
+                        dialog.after(0, lambda: _show_image(fig_path))
+
+                    else:
+                        n_sims = int(batch_n_var.get())
+                        tmp_csv = tempfile.NamedTemporaryFile(suffix=".csv", delete=False)
+                        tmp_csv_path = tmp_csv.name
+                        tmp_csv.close()
+
+                        rows = _am.compare_dataset(
+                            dataset_dir,
+                            n_sims=n_sims,
+                            sequential=sequential,
+                            out_csv=tmp_csv_path,
+                            verbose=True,
+                        )
+
+                        # Show summary text in metrics box
+                        import io
+                        import sys as _sys
+
+                        buf = io.StringIO()
+                        old_stdout = _sys.stdout
+                        _sys.stdout = buf
+                        try:
+                            _am._print_summary(rows)
+                        finally:
+                            _sys.stdout = old_stdout
+                        metrics_text = buf.getvalue()
+                        dialog.after(0, lambda: _write_metrics(metrics_text))
+
+                    dialog.after(0, lambda: progress_lbl.config(text="Done", fg=OK_COLOR))
+                except Exception as exc:  # pylint: disable=broad-except
+                    err_msg = str(exc)
+                    dialog.after(0, lambda: progress_lbl.config(text=f"Error: {err_msg[:60]}", fg=ERR_COLOR))
+                finally:
+                    dialog.after(0, lambda: run_btn.config(state="normal", text="Run Analysis"))
+
+            threading.Thread(target=_run, daemon=True).start()
+
+        run_btn.config(command=_do_run)
+
+        tk.Button(sec4, text="Close", command=dialog.destroy, width=12).grid(row=4, column=0, sticky="w", pady=(4, 0))
+
     # ------------------------------------------------------------------
     # Generate Dataset dialog
     # ------------------------------------------------------------------
