@@ -291,40 +291,36 @@ class TestModelArchitectureVariants:
 
 
 # ---------------------------------------------------------------------------
-# 4. Known hole: smape NaN with zero tensors
+# 4. sMAPE removed — verify it is gone and relative RMSE is present
 # ---------------------------------------------------------------------------
 
 class TestSmapeNaNHole:
     """
-    KNOWN HOLE: smape() has no guard against zero denominators.
-
-    When y_true == y_pred == 0, denominator = 0 and result is NaN.
-    This corrupts sMAPE reporting for simulations with near-zero displacement.
+    FIX VERIFIED (HOLE 7): sMAPE was removed from model.py because it is
+    dominated by near-zero nodes (returns ~150% regardless of model quality).
+    Relative RMSE (rmse / peak_gt * 100%) is now reported instead.
     """
 
-    def test_smape_both_zero_is_finite_after_fix(self):
-        """FIX VERIFIED: smape(0, 0) now returns 0.0 (not NaN) after adding clamp(min=1e-8)."""
-        y = torch.zeros(5, 10, 3)
-        result = M.smape(y, y)
-        assert torch.isfinite(result), "smape(0,0) must be finite after the zero-denom fix"
-        assert float(result) == pytest.approx(0.0, abs=1e-6)
+    def test_smape_removed_from_module(self):
+        """sMAPE function must NOT be present in model.py (removed as per HOLE 7 fix)."""
+        assert not hasattr(M, "smape"), (
+            "smape() was removed because it is meaningless for near-zero displacement "
+            "fields. Do not re-add it — use rel_rmse_pct instead."
+        )
 
-    def test_smape_nonzero_is_finite(self):
-        """smape with non-zero inputs must not produce NaN."""
-        rng  = np.random.default_rng(0)
-        true = torch.tensor(rng.random((4, 50, 3)).astype(np.float32)) * 1e-4
-        pred = torch.tensor(rng.random((4, 50, 3)).astype(np.float32)) * 1e-4
-        result = M.smape(true, pred)
-        assert torch.isfinite(result), "smape with non-zero inputs must be finite"
-        assert result >= 0.0
+    def test_evaluate_on_dataset_returns_rel_rmse(self):
+        """evaluate_on_dataset must return mean_rel_rmse_pct in its result dict."""
+        import inspect
+        src = inspect.getsource(M.evaluate_on_dataset)
+        assert "mean_rel_rmse_pct" in src, (
+            "evaluate_on_dataset must return mean_rel_rmse_pct (HOLE 7 fix)"
+        )
 
-    def test_smape_near_zero_produces_nan(self):
-        """Extremely small but non-zero values → effectively zero → NaN."""
-        y = torch.full((10, 5, 3), 1e-38)  # denormal-close to zero
-        result = M.smape(y, y)
-        # document: this also produces NaN because |y_true - y_pred| = 0 and
-        # denominator is also effectively 0 in float32
-        assert torch.isnan(result) or result == 0.0
+    def test_rel_rmse_pct_in_per_sim(self):
+        """per_sim dicts inside evaluate_on_dataset must contain rel_rmse_pct."""
+        import inspect
+        src = inspect.getsource(M.evaluate_on_dataset)
+        assert "rel_rmse_pct" in src
 
 
 # ---------------------------------------------------------------------------

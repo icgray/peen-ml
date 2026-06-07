@@ -42,6 +42,18 @@ _MAT_LIN_IDX = [1, 5]             # nu_b, nu_s
 _MAT_LO = np.array([10.85, 0.22, 8.44, 9.07, 10.85, 0.22, 3.30], dtype=np.float32)
 _MAT_HI = np.array([11.31, 0.45, 9.05, 9.61, 11.62, 0.35, 4.30], dtype=np.float32)
 
+# Shot-process conditioning scalars appended after material features → (N, 10) total.
+# All three are log10-scaled; bounds from the dataset generation ranges.
+# Order: [log10(V_m_per_s), log10(D_mm), log10(n_shots)]
+#   V ∈ [10, 80] m/s  → log10 ∈ [1.000, 1.903]
+#   D ∈ [0.1, 1.5] mm → log10 ∈ [-1.000, 0.176]
+#   n ∈ [20, 400]     → log10 ∈ [1.301, 2.602]
+SHOT_FEATURE_KEYS = ["V_m_per_s", "D_mm", "n_shots"]
+SHOT_DIM = 3
+FULL_COND_DIM = MAT_DIM + SHOT_DIM  # 10
+_SHOT_LO = np.array([1.000, -1.000, 1.301], dtype=np.float32)
+_SHOT_HI = np.array([1.903,  0.176, 2.602], dtype=np.float32)
+
 
 def normalize_mat_features(raw: np.ndarray) -> np.ndarray:
     """Normalise a (..., 7) material feature array to approximately [0, 1].
@@ -54,6 +66,16 @@ def normalize_mat_features(raw: np.ndarray) -> np.ndarray:
     for i in _MAT_LOG_IDX:
         raw[..., i] = np.log10(np.maximum(raw[..., i], 1e-30))
     return np.clip((raw - _MAT_LO) / (_MAT_HI - _MAT_LO + 1e-12), -0.5, 1.5).astype(np.float32)
+
+
+def normalize_shot_params(raw: np.ndarray) -> np.ndarray:
+    """Normalise a (..., 3) shot-process feature array [V_m_per_s, D_mm, n_shots].
+
+    All three are log10-scaled then linearly normalised to [0, 1].
+    """
+    raw = np.asarray(raw, dtype=np.float32).copy()
+    raw = np.log10(np.maximum(raw, 1e-30))
+    return np.clip((raw - _SHOT_LO) / (_SHOT_HI - _SHOT_LO + 1e-12), -0.5, 1.5).astype(np.float32)
 
 
 def _parse_material_block(sim_dir: str) -> Optional[dict]:
@@ -92,6 +114,54 @@ def _parse_material_block(sim_dir: str) -> Optional[dict]:
     if len(found) == MAT_DIM:
         return found
     return None
+
+
+def _parse_shot_params(sim_dir: str) -> Optional[np.ndarray]:
+    """Return raw [V_m_per_s, D_mm, n_shots] from simulation_params.txt, or None."""
+    params_path = os.path.join(sim_dir, "simulation_params.txt")
+    if not os.path.exists(params_path):
+        return None
+    found: dict = {}
+    with open(params_path) as fh:
+        for line in fh:
+            line = line.strip()
+            if line.startswith("["):
+                break  # stop at first section block
+            if ":" in line:
+                key, _, val = line.partition(":")
+                key = key.strip()
+                if key in SHOT_FEATURE_KEYS:
+                    try:
+                        found[key] = float(val.strip())
+                    except ValueError:
+                        pass
+    if len(found) == SHOT_DIM:
+        return np.array([found[k] for k in SHOT_FEATURE_KEYS], dtype=np.float32)
+    return None
+
+
+def _load_sim_conditioning(sim_dir: str, include_shot_params: bool = True) -> np.ndarray:
+    """Load normalised (7 or 10)-dim conditioning vector for one simulation.
+
+    Returns mat_norm (7-dim) concatenated with normalised shot params (3-dim)
+    when include_shot_params=True and the params file is present.  Falls back
+    to 7-dim (or default material) if either block is missing.
+    """
+    mat_raw = _parse_material_block(sim_dir)
+    if mat_raw is not None:
+        raw_vec = np.array([mat_raw[k] for k in MAT_FEATURE_KEYS], dtype=np.float32)
+        mat_norm = normalize_mat_features(raw_vec)
+    else:
+        mat_norm = _DEFAULT_MAT_NORM.copy()
+
+    if not include_shot_params:
+        return mat_norm
+
+    shot_raw = _parse_shot_params(sim_dir)
+    if shot_raw is not None:
+        shot_norm = normalize_shot_params(shot_raw)
+        return np.concatenate([mat_norm, shot_norm], axis=0)  # (10,)
+    return mat_norm  # fallback to 7-dim if shot params missing
 
 
 # Default material feature vector (ShotPeenParams defaults — used for legacy datasets)
@@ -149,12 +219,7 @@ def load_all_npy_files(base_folder,
                     raise FileNotFoundError(f"{file_name.capitalize()} File not found in {simulation_folder}!")
 
         if load_material_features:
-            mat_raw = _parse_material_block(simulation_path)
-            if mat_raw is not None:
-                raw_vec = np.array([mat_raw[k] for k in MAT_FEATURE_KEYS], dtype=np.float32)
-                mat_list.append(normalize_mat_features(raw_vec))
-            else:
-                mat_list.append(_DEFAULT_MAT_NORM.copy())
+            mat_list.append(_load_sim_conditioning(simulation_path, include_shot_params=True))
 
     # Stack data from all simulations along a new axis
     stacked_data = {}
@@ -165,7 +230,7 @@ def load_all_npy_files(base_folder,
             stacked_data[key] = None  # No data loaded for this key
 
     if load_material_features and mat_list:
-        stacked_data["material_features"] = np.stack(mat_list)  # (N, 7)
+        stacked_data["material_features"] = np.stack(mat_list)  # (N, 7) or (N, 10) with shot conditioning
 
     print("All specified data loaded and stacked successfully!")
     return stacked_data
@@ -462,8 +527,498 @@ class ImprovedDisplacementPredictor(nn.Module):
         return self.fc(x).view(x.size(0), -1, 3)
 
 
+# 4c. Multi-task predictor — displacement + nodal stress + global scalars
+class MultiTaskPredictor(nn.Module):
+    """CNN encoder with three output heads for joint prediction.
+
+    Predicts:
+      - displacement_head : (batch, num_nodes, 3)  — ux, uy, uz per node
+      - stress_head       : (batch, num_nodes, 4)  — S11, S22, S33, S12 per node
+      - scalar_head       : (batch, 3)             — cupping (m), peak_stress (Pa), coverage
+
+    Input
+    -----
+    x   : (batch, input_channels, G, G)
+          input_channels=6 for physics checkerboard; 1 for density-only.
+    mat : (batch, mat_dim) optional material features
+
+    The shared encoder is identical to ImprovedDisplacementPredictor
+    (4 conv+CBAM attention blocks, 32→64→128→256 channels), followed by a
+    shared FC neck (→1024→512). The three heads branch from the 512-dim neck.
+    """
+
+    def __init__(
+        self,
+        input_channels: int = 6,
+        num_nodes: int = 2601,
+        checkerboard_size: int = 10,
+        mat_dim: int = 0,
+        predict_stress: bool = True,
+        predict_scalars: bool = True,
+    ):
+        super().__init__()
+        self.num_nodes = num_nodes
+        self.checkerboard_size = checkerboard_size
+        self.mat_dim = mat_dim
+        self.predict_stress = predict_stress
+        self.predict_scalars = predict_scalars
+
+        def _block(ic, oc):
+            return nn.Sequential(
+                nn.Conv2d(ic, oc, kernel_size=3, padding=1),
+                nn.BatchNorm2d(oc),
+                nn.ReLU(inplace=True),
+            )
+
+        # Shared encoder
+        self.conv1 = _block(input_channels, 32)
+        self.ca1 = ChannelAttention(32);  self.sa1 = SpatialAttention()
+        self.conv2 = _block(32, 64)
+        self.ca2 = ChannelAttention(64);  self.sa2 = SpatialAttention()
+        self.conv3 = _block(64, 128)
+        self.ca3 = ChannelAttention(128); self.sa3 = SpatialAttention()
+        self.conv4 = _block(128, 256)
+        self.ca4 = ChannelAttention(256); self.sa4 = SpatialAttention()
+
+        _fc_in = 256 * checkerboard_size * checkerboard_size + mat_dim
+
+        # Shared FC neck
+        self.neck = nn.Sequential(
+            nn.Linear(_fc_in, 1024), nn.ReLU(inplace=True), nn.Dropout(0.2),
+            nn.Linear(1024, 512),   nn.ReLU(inplace=True), nn.Dropout(0.1),
+        )
+
+        # Output heads
+        self.displacement_head = nn.Linear(512, num_nodes * 3)
+        if predict_stress:
+            self.stress_head = nn.Linear(512, num_nodes * 4)
+        if predict_scalars:
+            self.scalar_head = nn.Linear(512, 3)
+
+    def forward(
+        self, x: torch.Tensor, mat: Optional[torch.Tensor] = None
+    ) -> dict:
+        """
+        Returns
+        -------
+        dict with keys:
+          'displacements' : (batch, num_nodes, 3)
+          'stresses'      : (batch, num_nodes, 4)  — only if predict_stress
+          'scalars'       : (batch, 3)             — only if predict_scalars
+        """
+        x = self.sa1(self.ca1(self.conv1(x)))
+        x = self.sa2(self.ca2(self.conv2(x)))
+        x = self.sa3(self.ca3(self.conv3(x)))
+        x = self.sa4(self.ca4(self.conv4(x)))
+        x = x.view(x.size(0), -1)
+        if self.mat_dim > 0:
+            if mat is None:
+                mat = x.new_zeros(x.size(0), self.mat_dim)
+            x = torch.cat([x, mat], dim=1)
+        neck = self.neck(x)
+
+        out: dict = {}
+        out["displacements"] = self.displacement_head(neck).view(
+            neck.size(0), self.num_nodes, 3
+        )
+        if self.predict_stress:
+            out["stresses"] = self.stress_head(neck).view(
+                neck.size(0), self.num_nodes, 4
+            )
+        if self.predict_scalars:
+            out["scalars"] = self.scalar_head(neck)
+        return out
+
+
+# ---------------------------------------------------------------------------
+# MultiTask Dataset and DataLoaders
+# ---------------------------------------------------------------------------
+
+class MultiTaskDataset(torch.utils.data.Dataset):
+    """Dataset for MultiTaskPredictor.
+
+    Items: (physics_cb, [mat_features,] displacements, nodal_stresses, scalars)
+      physics_cb       : (C, G, G) float32  — 6-ch physics or 1-ch density
+      displacements    : (N_nodes, 3) float32
+      nodal_stresses   : (N_nodes, 4) float32
+      scalars          : (3,) float32 — [cupping_m, peak_stress_Pa, coverage]
+      mat_features     : (7 or 10,) float32  — only present if mat_features is not None
+    """
+
+    def __init__(
+        self,
+        physics_cb: np.ndarray,        # (N, C, G, G)
+        displacements: np.ndarray,     # (N, nodes, 3)
+        nodal_stresses: np.ndarray,    # (N, nodes, 4)
+        scalars: np.ndarray,           # (N, 3)
+        mat_features: Optional[np.ndarray] = None,  # (N, 7)
+        disp_scale: float = 1.0,
+        stress_scale: float = 1.0,
+        scalar_scales: Optional[np.ndarray] = None,  # (3,)
+    ):
+        self.cb = torch.tensor(physics_cb, dtype=torch.float32)
+        self.disp = torch.tensor(displacements / disp_scale, dtype=torch.float32)
+        self.stress = torch.tensor(
+            nodal_stresses / stress_scale if stress_scale != 0 else nodal_stresses,
+            dtype=torch.float32
+        )
+        _scalar_scales = scalar_scales if scalar_scales is not None else np.ones(3)
+        safe = np.where(np.abs(_scalar_scales) > 0, _scalar_scales, 1.0)
+        self.scalars = torch.tensor(scalars / safe, dtype=torch.float32)
+        self.mat = (
+            torch.tensor(mat_features, dtype=torch.float32)
+            if mat_features is not None else None
+        )
+
+    def __len__(self) -> int:
+        return len(self.cb)
+
+    def __getitem__(self, idx):
+        if self.mat is not None:
+            return self.cb[idx], self.mat[idx], self.disp[idx], self.stress[idx], self.scalars[idx]
+        return self.cb[idx], self.disp[idx], self.stress[idx], self.scalars[idx]
+
+
+def create_multitask_data_loaders(
+    base_folder: str,
+    batch_size: int = 32,
+    load_material_features: bool = False,
+    use_physics_cb: bool = True,
+) -> tuple:
+    """Load data for MultiTaskPredictor and return DataLoaders.
+
+    Loads:
+      - checkerboard_physics.npy (6,G,G) if use_physics_cb and file exists,
+        else checkerboard.npy (G,G) reshaped to (1,G,G)
+      - displacements.npy (N,3)
+      - nodal_stresses.npy (N,4)
+      - cupping.npy scalar
+      - simulation_params.txt material block (optional)
+
+    Returns
+    -------
+    train_loader, val_loader, test_loader, stats_dict
+      stats_dict keys: disp_scale, stress_scale, scalar_scales, input_channels,
+                       num_nodes, checkerboard_size, has_mat_features
+    """
+    sim_dirs = sorted(
+        [d for d in os.listdir(base_folder)
+         if os.path.isdir(os.path.join(base_folder, d))
+         and d.startswith("Simulation_") and d[len("Simulation_"):].isdigit()],
+        key=lambda x: int(x.split("_")[1]),
+    )
+    if not sim_dirs:
+        raise FileNotFoundError(f"No Simulation_* folders in {base_folder}")
+
+    all_cb, all_disp, all_stress, all_scalars, all_mat = [], [], [], [], []
+
+    for sim_name in sim_dirs:
+        sd = os.path.join(base_folder, sim_name)
+        disp_path = os.path.join(sd, "displacements.npy")
+        if not os.path.exists(disp_path):
+            continue
+
+        # Physics checkerboard
+        phys_path = os.path.join(sd, "checkerboard_physics.npy")
+        dens_path = os.path.join(sd, "checkerboard.npy")
+        if use_physics_cb and os.path.exists(phys_path):
+            cb = np.load(phys_path).astype(np.float32)   # (6, G, G)
+        elif os.path.exists(dens_path):
+            cb_2d = np.load(dens_path).astype(np.float32)  # (G, G)
+            cb = cb_2d[np.newaxis]                          # (1, G, G)
+        else:
+            continue
+
+        # Displacement
+        disp = np.load(disp_path).astype(np.float32)
+
+        # Nodal stresses (fall back to zero if not generated yet)
+        ns_path = os.path.join(sd, "nodal_stresses.npy")
+        if os.path.exists(ns_path):
+            ns = np.load(ns_path).astype(np.float32)
+        else:
+            ns = np.zeros((disp.shape[0], 4), dtype=np.float32)
+
+        # Scalars: [cupping, peak_stress, coverage]
+        cup_path = os.path.join(sd, "cupping.npy")
+        cupping = float(np.load(cup_path)) if os.path.exists(cup_path) else 0.0
+        peak_stress = float(ns[:, 0].min()) if ns.shape[0] > 0 else 0.0  # most compressive S11
+        coverage = float(np.load(os.path.join(sd, "coverage_report.txt")).read().split("coverage_fraction:")[1].split("\n")[0]) if False else 0.0
+        # Simpler: read coverage from checkerboard_physics channel 4 mean
+        if use_physics_cb and os.path.exists(phys_path):
+            coverage = float(np.load(phys_path)[4].mean())
+        scalars = np.array([cupping, peak_stress, coverage], dtype=np.float32)
+
+        all_cb.append(cb)
+        all_disp.append(disp)
+        all_stress.append(ns)
+        all_scalars.append(scalars)
+        if load_material_features:
+            # _load_sim_conditioning returns already-normalised (7 or 10)-dim vector
+            all_mat.append(_load_sim_conditioning(sd, include_shot_params=True))
+
+    if not all_cb:
+        raise ValueError(f"No valid simulations found in {base_folder}")
+
+    cb_arr     = np.stack(all_cb,     axis=0)   # (N, C, G, G)
+    disp_arr   = np.stack(all_disp,   axis=0)   # (N, nodes, 3)
+    stress_arr = np.stack(all_stress, axis=0)   # (N, nodes, 4)
+    scalar_arr = np.stack(all_scalars, axis=0)  # (N, 3)
+    mat_arr    = np.stack(all_mat, axis=0) if all_mat else None
+
+    input_channels    = cb_arr.shape[1]
+    num_nodes         = disp_arr.shape[1]
+    checkerboard_size = cb_arr.shape[-1]
+
+    # Scale targets so all are O(1) during training.
+    # Per-sim normalization equalizes gradient across the amplitude range (fixes the
+    # high-dynamic-range collapse problem in 316L+ceramic, Inconel+W, 4340+cast_iron).
+    _per_sim_disp_scales = np.array([
+        float(np.abs(disp_arr[i]).max()) or 1.0
+        for i in range(len(disp_arr))
+    ], dtype=np.float64)
+    # Normalize each sim by its own max in-place
+    disp_arr = (disp_arr / _per_sim_disp_scales[:, np.newaxis, np.newaxis]).astype(np.float32)
+    disp_scale = 1.0  # data is pre-normalised; MultiTaskDataset should not re-divide
+
+    stress_scale = float(np.abs(stress_arr).max()) or 1.0
+    scalar_scales = np.array([
+        float(np.abs(scalar_arr[:, 0]).max()) or 1.0,   # cupping
+        float(np.abs(scalar_arr[:, 1]).max()) or 1.0,   # peak_stress
+        float(np.abs(scalar_arr[:, 2]).max()) or 1.0,   # coverage
+    ], dtype=np.float64)
+
+    torch.manual_seed(2024)
+    np.random.seed(2024)
+
+    full_ds = MultiTaskDataset(
+        cb_arr, disp_arr, stress_arr, scalar_arr,
+        mat_features=mat_arr,
+        disp_scale=disp_scale,
+        stress_scale=stress_scale,
+        scalar_scales=scalar_scales,
+    )
+
+    n = len(full_ds)
+    n_train = int(0.70 * n)
+    n_val   = int(0.15 * n)
+    n_test  = n - n_train - n_val
+    train_ds, val_ds, test_ds = torch.utils.data.random_split(
+        full_ds, [n_train, n_val, n_test]
+    )
+
+    _pin = torch.cuda.is_available()
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,  num_workers=0, pin_memory=_pin)
+    val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin)
+    test_loader  = DataLoader(test_ds,  batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin)
+
+    stats = {
+        "disp_scale":           float(np.median(_per_sim_disp_scales)),  # representative for logging
+        "per_sim_disp_scales":  _per_sim_disp_scales,
+        "per_sim_norm":         True,
+        "stress_scale":         stress_scale,
+        "scalar_scales":        scalar_scales,
+        "input_channels":       input_channels,
+        "num_nodes":            num_nodes,
+        "checkerboard_size":    checkerboard_size,
+        "has_mat_features":     mat_arr is not None,
+        "n_train":              n_train,
+        "n_val":                n_val,
+        "n_test":               n_test,
+    }
+    return train_loader, val_loader, test_loader, stats
+
+
+def _parse_mat_features(params_path: str) -> np.ndarray:
+    """Parse material feature vector from simulation_params.txt."""
+    if not os.path.exists(params_path):
+        return np.zeros(MAT_DIM, dtype=np.float32)
+    try:
+        with open(params_path) as fh:
+            text = fh.read()
+        result = _extract_material_features_from_text(text)
+        return np.asarray(result, dtype=np.float32)
+    except Exception:
+        return np.zeros(MAT_DIM, dtype=np.float32)
+
+
+def train_model_multitask(
+    model: "MultiTaskPredictor",
+    train_loader,
+    val_loader,
+    optimizer,
+    scheduler,
+    epochs: int = 100,
+    patience: int = 20,
+    device=None,
+    plot_save_path: Optional[str] = None,
+    use_amp: bool = False,
+    max_grad_norm: Optional[float] = 1.0,
+    loss_weights: tuple = (1.0, 0.005, 0.01),
+    use_material: bool = False,
+    stats: Optional[dict] = None,
+    warmup_disp_epochs: int = 20,
+    stress_components: int = 2,
+) -> tuple:
+    """Train MultiTaskPredictor with weighted multi-task MSE loss.
+
+    Loss = λ_d * MSE(disp) + λ_s * MSE(stress[:2]) + λ_c * MSE(scalars)
+
+    Parameters
+    ----------
+    loss_weights        : (λ_d, λ_s, λ_c) — default (1.0, 0.005, 0.01).
+                          λ_s reduced from 0.05 to avoid stress head overwhelming disp.
+    warmup_disp_epochs  : Epochs to train displacement head only (λ_s=λ_c=0).
+                          Default 20 — lets the displacement head stabilise first.
+    stress_components   : Number of stress tensor components to use in the loss
+                          (default 2 = S11+S22 only; S33/S12 are zero in biaxial peening).
+    stats               : dict returned by create_multitask_data_loaders (for logging).
+
+    Returns
+    -------
+    train_losses, val_losses : lists of per-epoch total loss.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+
+    _use_amp = use_amp and device.type == "cuda"
+    scaler = torch.amp.GradScaler("cuda") if _use_amp else None
+
+    λ_d, λ_s, λ_c = loss_weights
+    criterion = torch.nn.MSELoss()
+
+    best_val = float("inf")
+    patience_ctr = 0
+    train_losses, val_losses = [], []
+
+    best_path = (plot_save_path.replace(".png", "_best.pth")
+                 if plot_save_path else None)
+
+    def _compute_loss(out, disp_t, stress_t, scalar_t, active_λ_s, active_λ_c):
+        """Weighted multi-task loss with stress component masking."""
+        disp_loss = criterion(out["displacements"], disp_t)
+        stress_loss = 0.0
+        if active_λ_s > 0 and "stresses" in out:
+            s_pred = out["stresses"][..., :stress_components]
+            s_gt   = stress_t[..., :stress_components]
+            stress_loss = criterion(s_pred, s_gt)
+        scalar_loss = 0.0
+        if active_λ_c > 0 and "scalars" in out:
+            scalar_loss = criterion(out["scalars"], scalar_t)
+        return λ_d * disp_loss + active_λ_s * stress_loss + active_λ_c * scalar_loss
+
+    for epoch in range(epochs):
+        # Warmup: displacement head only for the first warmup_disp_epochs epochs
+        active_λ_s = 0.0 if epoch < warmup_disp_epochs else λ_s
+        active_λ_c = 0.0 if epoch < warmup_disp_epochs else λ_c
+        if epoch == warmup_disp_epochs and warmup_disp_epochs > 0:
+            print(f"  [MultiTask] Warmup complete at epoch {epoch+1} — enabling stress+scalar heads")
+
+        # ---- Training ----
+        model.train()
+        epoch_loss = 0.0
+        for batch in train_loader:
+            if use_material:
+                cb, mat_f, disp_t, stress_t, scalar_t = batch
+                mat_f = mat_f.to(device)
+            else:
+                cb, disp_t, stress_t, scalar_t = batch
+                mat_f = None
+            cb       = cb.to(device)
+            disp_t   = disp_t.to(device)
+            stress_t = stress_t.to(device)
+            scalar_t = scalar_t.to(device)
+
+            optimizer.zero_grad()
+            if _use_amp:
+                with torch.amp.autocast("cuda"):
+                    out  = model(cb, mat_f)
+                    loss = _compute_loss(out, disp_t, stress_t, scalar_t, active_λ_s, active_λ_c)
+                scaler.scale(loss).backward()
+                if max_grad_norm:
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                out  = model(cb, mat_f)
+                loss = _compute_loss(out, disp_t, stress_t, scalar_t, active_λ_s, active_λ_c)
+                loss.backward()
+                if max_grad_norm:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+                optimizer.step()
+            epoch_loss += loss.item()
+
+        train_loss = epoch_loss / max(len(train_loader), 1)
+        train_losses.append(train_loss)
+
+        # ---- Validation ----
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for batch in val_loader:
+                if use_material:
+                    cb, mat_f, disp_t, stress_t, scalar_t = batch
+                    mat_f = mat_f.to(device)
+                else:
+                    cb, disp_t, stress_t, scalar_t = batch
+                    mat_f = None
+                cb       = cb.to(device)
+                disp_t   = disp_t.to(device)
+                stress_t = stress_t.to(device)
+                scalar_t = scalar_t.to(device)
+                if _use_amp:
+                    with torch.amp.autocast("cuda"):
+                        out = model(cb, mat_f)
+                else:
+                    out = model(cb, mat_f)
+                val_loss += _compute_loss(
+                    out, disp_t, stress_t, scalar_t, active_λ_s, active_λ_c
+                ).item()
+        val_loss /= max(len(val_loader), 1)
+        val_losses.append(val_loss)
+
+        if scheduler is not None:
+            scheduler.step()
+
+        print(f"  Epoch {epoch+1}/{epochs}  train={train_loss:.4e}  val={val_loss:.4e}")
+
+        if val_loss < best_val:
+            best_val = val_loss
+            patience_ctr = 0
+            if best_path:
+                torch.save(model.state_dict(), best_path)
+        else:
+            patience_ctr += 1
+            if patience_ctr >= patience:
+                print(f"  Early stop at epoch {epoch+1}")
+                break
+
+    # Reload best weights
+    if best_path and os.path.exists(best_path):
+        model.load_state_dict(torch.load(best_path, map_location=device))
+
+    # Loss curve
+    if plot_save_path:
+        fig, ax = plt.subplots()
+        ax.plot(train_losses, label="Train")
+        ax.plot(val_losses,   label="Val")
+        ax.set_xlabel("Epoch"); ax.set_ylabel("Loss (weighted multi-task)")
+        ax.legend(); ax.set_title("MultiTaskPredictor Training")
+        os.makedirs(os.path.dirname(os.path.abspath(plot_save_path)), exist_ok=True)
+        fig.savefig(plot_save_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+
+    return train_losses, val_losses
+
+
 # 5. Data Loader Creation Function
-def create_data_loaders(base_folder, load_files=("checkerboard", "displacements"), skip_missing=True, batch_size=15, load_material_features=False, normalize_displacements=False):
+def create_data_loaders(base_folder, load_files=("checkerboard", "displacements"), skip_missing=True, batch_size=15, load_material_features=False, normalize_displacements=False, per_sim_normalize_displacements=False):
     """
     Create PyTorch DataLoaders for training, validation, and testing.
 
@@ -474,6 +1029,11 @@ def create_data_loaders(base_folder, load_files=("checkerboard", "displacements"
         batch_size (int): Batch size for DataLoaders.
         load_material_features (bool): If True, parse material blocks and include them
             as a second item in each batch (checkerboard, mat_features, displacement).
+        normalize_displacements (bool): If True, divide targets by global max displacement.
+        per_sim_normalize_displacements (bool): If True, normalize each simulation's
+            displacements by its own max amplitude so all sims contribute equally to
+            the loss.  Supersedes normalize_displacements.  Sets loaded_data["per_sim_norm"]
+            = True and loaded_data["per_sim_disp_scales"] to an (N,) array.
 
     Returns:
         tuple: DataLoaders for training, validation, and testing, and the loaded data dictionary.
@@ -492,21 +1052,37 @@ def create_data_loaders(base_folder, load_files=("checkerboard", "displacements"
     loaded_data["checkerboard_norm_min"] = _cb_min
     loaded_data["checkerboard_norm_max"] = _cb_max
 
-    # Displacement output normalization: divide targets by global max absolute
-    # displacement so the training target is in [-1, 1].  Predictions must be
-    # multiplied back by disp_scale after inference.  Disabled by default so
-    # existing GUI / benchmark code is unaffected.
-    if normalize_displacements:
+    # Displacement output normalization.
+    # per_sim_normalize: each sim scaled by its own max — equalizes gradient across the
+    # amplitude range (fixes the 5000× dynamic range problem in 316L+ceramic, etc.).
+    # normalize_displacements: legacy global-max scaling.
+    if per_sim_normalize_displacements:
+        _per_sim_scales = np.array([
+            float(np.abs(displacements[i]).max()) or 1.0
+            for i in range(len(displacements))
+        ], dtype=np.float64)
+        # Normalize each sim in-place (displacements is already a numpy array)
+        displacements = (
+            displacements / _per_sim_scales[:, np.newaxis, np.newaxis]
+        ).astype(np.float32)
+        loaded_data["per_sim_disp_scales"] = _per_sim_scales
+        loaded_data["per_sim_norm"] = True
+        loaded_data["disp_scale"] = float(np.median(_per_sim_scales))
+        _disp_scale = 1.0  # data is pre-normalised; dataset should not re-divide
+    elif normalize_displacements:
         _disp_scale = float(np.abs(displacements).max()) or 1.0
+        loaded_data["disp_scale"] = _disp_scale
+        loaded_data["per_sim_norm"] = False
     else:
         _disp_scale = 1.0
-    loaded_data["disp_scale"] = _disp_scale
+        loaded_data["disp_scale"] = 1.0
+        loaded_data["per_sim_norm"] = False
 
     # Set Random State for Reproducibility
     torch.manual_seed(2024)
     np.random.seed(2024)
 
-    # Create dataset — disp_scale=1.0 is a no-op
+    # Create dataset — disp_scale=1.0 is a no-op when data is already normalized
     full_dataset = CheckerboardDataset(checkerboard, displacements, mat_features,
                                         disp_scale=_disp_scale)
 
@@ -764,22 +1340,6 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
     return train_losses, val_losses
 
 # 8. Evaluation Function
-def smape(y_true, y_pred):
-    """
-    Calculate Symmetric Mean Absolute Percentage Error (sMAPE).
-
-    Args:
-        y_true (Tensor): Ground truth tensor.
-        y_pred (Tensor): Predicted tensor.
-
-    Returns:
-        float: sMAPE value.
-    """
-    numerator = torch.abs(y_true - y_pred)
-    denominator = (torch.abs(y_true) + torch.abs(y_pred)) / 2
-    smape_value = torch.mean(numerator / denominator.clamp(min=1e-8))
-    return smape_value
-
 def evaluate_model(model, test_loader, criterion, device=None, use_material=False):
     """
     Evaluate the model on the test set.
@@ -797,11 +1357,8 @@ def evaluate_model(model, test_loader, criterion, device=None, use_material=Fals
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model.eval()
-    total_mse = 0.0  # Initialize total MSE for all batches
-    total_smape = 0.0  # Initialize total sMAPE for all batches
-
+    total_mse = 0.0
     batch_count = 0
-
 
     with torch.no_grad():
         for test_batch in test_loader:
@@ -813,34 +1370,21 @@ def evaluate_model(model, test_loader, criterion, device=None, use_material=Fals
                 mat_feat = None
             checkerboard = checkerboard.to(device)
             displacement = displacement.to(device)
-            # Forward pass to get predictions
             predicted_displacements = model(checkerboard, mat_feat)
-
-            # Calculate batch MSE
-            batch_mse = criterion(predicted_displacements, displacement).item()  # Compute MSE loss for the batch
+            batch_mse = criterion(predicted_displacements, displacement).item()
             total_mse += batch_mse
-
-            # Calculate batch sMAPE
-            batch_smape = smape(displacement, predicted_displacements).item() # sMAPE
-            total_smape += batch_smape
-
             batch_count += 1
 
-            # Display results for the first batch
             if batch_count == 1:
                 print("\nCheckerboard Input:")
-                print(checkerboard[0][0].cpu().numpy())  # Show first checkerboard in the batch
+                print(checkerboard[0][0].cpu().numpy())
                 print("\nPredicted Displacement (First 5 Nodes):")
-                print(predicted_displacements[0][:5].cpu().numpy())  # Predicted displacement for first 5 nodes
+                print(predicted_displacements[0][:5].cpu().numpy())
                 print("\nGround Truth Displacement (First 5 Nodes):")
-                print(displacement[0][:5].cpu().numpy())  # Ground truth displacement for first 5 nodes
+                print(displacement[0][:5].cpu().numpy())
 
-    # Calculate and print overall MSE
     overall_mse = total_mse / batch_count
-    overall_smape = total_smape / batch_count
-
     print(f"Overall Mean Squared Error (MSE) on Test Set: {overall_mse:.10f}")
-    print(f"Overall Symmetric Mean Absolute Percentage Error (sMAPE) on Test Set: {overall_smape * 100:.10f}%")
     return overall_mse
 
 # 9. Main Function
@@ -1077,14 +1621,34 @@ def infer_grid_shape(data_path):
 
 
 def create_field_data_loaders(data_path, batch_size=15, load_material_features=False):
-    """Load data and build DataLoaders serving (checkerboard, [mat,] disp_field) tuples."""
+    """Load data and build DataLoaders serving (checkerboard, [mat,] disp_field) tuples.
+
+    Per-sim normalization is applied to displacements (each sim divided by its own
+    max absolute displacement) so the loss landscape is well-scaled regardless of the
+    material's deformation range.  The per-sim scales are returned for saving alongside
+    the trained model.
+
+    Returns
+    -------
+    train_loader, val_loader, test_loader, grid_H, grid_W, disp_scale, per_sim_scales
+        disp_scale      : median per-sim scale (m) — representative for logging
+        per_sim_scales  : (N,) float32 array of per-sim max abs displacement (m)
+    """
     loaded = load_all_npy_files(data_path, ('checkerboard', 'displacements'),
                                 load_material_features=load_material_features)
     grid_H, grid_W = infer_grid_shape(data_path)
     mat_features = loaded.get('material_features', None)
 
+    disp_arr = loaded['displacements']  # (N, nodes, 3)
+    per_sim_scales = np.array(
+        [float(np.abs(disp_arr[i]).max()) or 1.0 for i in range(len(disp_arr))],
+        dtype=np.float32,
+    )
+    disp_arr = (disp_arr / per_sim_scales[:, np.newaxis, np.newaxis]).astype(np.float32)
+    disp_scale = float(np.median(per_sim_scales))
+
     torch.manual_seed(2024); np.random.seed(2024)
-    full_ds = FieldDataset(loaded['checkerboard'], loaded['displacements'], grid_H, grid_W, mat_features)
+    full_ds = FieldDataset(loaded['checkerboard'], disp_arr, grid_H, grid_W, mat_features)
     n = len(full_ds)
     tr, va = int(0.7 * n), int(0.15 * n)
     te = n - tr - va
@@ -1095,7 +1659,7 @@ def create_field_data_loaders(data_path, batch_size=15, load_material_features=F
         DataLoader(train_ds, batch_size=batch_size, shuffle=True,  num_workers=0, pin_memory=_pin),
         DataLoader(val_ds,   batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin),
         DataLoader(test_ds,  batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin),
-        grid_H, grid_W,
+        grid_H, grid_W, disp_scale, per_sim_scales,
     )
 
 
@@ -1119,15 +1683,16 @@ class ConvDecoderPredictor(nn.Module):
         self.mat_dim = mat_dim
 
         # Encoder — identical to DisplacementPredictor (3 conv+attention blocks)
-        self.conv1 = nn.Sequential(nn.Conv2d(input_channels, 32, 3, padding=1),
+        # reflect padding respects free-surface symmetry at domain edges (HOLE 4 fix)
+        self.conv1 = nn.Sequential(nn.Conv2d(input_channels, 32, 3, padding=1, padding_mode='reflect'),
                                    nn.BatchNorm2d(32), nn.ReLU())
         self.ca1 = ChannelAttention(32);  self.sa1 = SpatialAttention()
 
-        self.conv2 = nn.Sequential(nn.Conv2d(32, 64, 3, padding=1),
+        self.conv2 = nn.Sequential(nn.Conv2d(32, 64, 3, padding=1, padding_mode='reflect'),
                                    nn.BatchNorm2d(64), nn.ReLU())
         self.ca2 = ChannelAttention(64);  self.sa2 = SpatialAttention()
 
-        self.conv3 = nn.Sequential(nn.Conv2d(64, 128, 3, padding=1),
+        self.conv3 = nn.Sequential(nn.Conv2d(64, 128, 3, padding=1, padding_mode='reflect'),
                                    nn.BatchNorm2d(128), nn.ReLU())
         self.ca3 = ChannelAttention(128); self.sa3 = SpatialAttention()
 
@@ -1135,12 +1700,13 @@ class ConvDecoderPredictor(nn.Module):
         self.mat_proj = nn.Linear(mat_dim, 128) if mat_dim > 0 else None
 
         # Decoder: upsample to training grid resolution, then refine with convolutions
+        # reflect padding in decoder enforces zero-flux boundary (free-surface BC)
         self.decoder = nn.Sequential(
             nn.Upsample(size=(out_H, out_W), mode='bilinear', align_corners=False),
-            nn.Conv2d(128, 64, 3, padding=1),
+            nn.Conv2d(128, 64, 3, padding=1, padding_mode='reflect'),
             nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.Conv2d(64, 3, 1),  # 3 channels = ux, uy, uz; no activation (displacements can be negative)
+            nn.Conv2d(64, 3, 1),  # 3 channels = ux, uy, uz; kernel=1, no padding needed
         )
 
     def forward(self, x, mat=None):
@@ -1409,19 +1975,36 @@ def evaluate_on_dataset(
         disp_scale = 1.0
         print("[evaluate_on_dataset] No normalization_stats.npy found — using raw intensities.")
 
-    # Also check for SIREN disp_scale saved separately
+    # Fallback: SIREN disp_scale saved separately
     siren_scale_path = os.path.join(model_dir, "disp_scale.npy")
     if os.path.exists(siren_scale_path) and disp_scale == 1.0:
         disp_scale = float(np.load(siren_scale_path)[0])
 
-    _mat_dim = getattr(model, 'mat_dim', 0)
-    mat_t = None
-    if mat_features is not None and _mat_dim > 0:
-        mat_t = torch.tensor(np.asarray(mat_features, dtype=np.float32),
-                             dtype=torch.float32).unsqueeze(0).to(device)
+    # Fallback: MultiTaskPredictor saves multitask_stats.npy = [disp_scale, stress_scale]
+    mt_stats_path = os.path.join(model_dir, "multitask_stats.npy")
+    if os.path.exists(mt_stats_path) and disp_scale == 1.0:
+        disp_scale = float(np.load(mt_stats_path)[0])
+        print(f"[evaluate_on_dataset] MT disp_scale={disp_scale:.4e} (from multitask_stats.npy)")
 
-    is_conv  = isinstance(model, ConvDecoderPredictor)
-    is_siren = isinstance(model, SIRENPredictor)
+    # Detect per-sim normalization mode — when enabled, use GT-based per-sim scale
+    # at inference time so each sim's prediction is correctly denormalized.
+    _per_sim_norm = os.path.exists(os.path.join(model_dir, "per_sim_norm.npy"))
+
+    _mat_dim = getattr(model, 'mat_dim', 0)
+    # mat_features arg is kept for backward-compatibility (single override for all sims).
+    # When _mat_dim > 0 and no override is supplied, we load per-sim features from disk.
+    _mat_override = None
+    if mat_features is not None and _mat_dim > 0:
+        _mat_override = torch.tensor(np.asarray(mat_features, dtype=np.float32),
+                                     dtype=torch.float32).unsqueeze(0).to(device)
+
+    is_conv      = isinstance(model, ConvDecoderPredictor)
+    is_siren     = isinstance(model, SIRENPredictor)
+    is_multitask = isinstance(model, MultiTaskPredictor)
+    # Detect influence-field ConvDecoder (input_channels=4 → needs influence_fields.npy)
+    is_influence = is_conv and getattr(model.conv1[0], "in_channels", 1) == 4
+    # Whether the model was trained with shot-process conditioning (mat_dim == 10)
+    _uses_shot_cond = (_mat_dim == FULL_COND_DIM)
 
     sims = sorted(
         [d for d in os.listdir(data_path) if d.startswith("Simulation_")
@@ -1433,28 +2016,56 @@ def evaluate_on_dataset(
     fig_data = None  # store one example for the plot
 
     for sim_name in sims:
-        sim_dir = os.path.join(data_path, sim_name)
+        sim_dir   = os.path.join(data_path, sim_name)
+        phys_path = os.path.join(sim_dir, "checkerboard_physics.npy")
+        inf_path  = os.path.join(sim_dir, "influence_fields.npy")
         cb_path   = os.path.join(sim_dir, "checkerboard.npy")
         gt_path   = os.path.join(sim_dir, "displacements.npy")
         nc_path   = os.path.join(sim_dir, "node_coords.npy")
 
-        if not os.path.exists(cb_path) or not os.path.exists(gt_path):
+        if not os.path.exists(gt_path):
             continue
 
-        cb = np.load(cb_path)
+        # Select the right input depending on model type
+        if is_influence and os.path.exists(inf_path):
+            cb = np.load(inf_path).astype(np.float32)    # (4, H, W) — already in [0,1]
+        elif is_multitask and os.path.exists(phys_path):
+            cb = np.load(phys_path).astype(np.float32)   # (6, G, G) — already in [0,1]
+        elif os.path.exists(cb_path):
+            cb = np.load(cb_path)
+        else:
+            continue
+
         gt = np.load(gt_path)  # (N, 3)
         gt_comp = gt[:, comp_idx] * 1e6  # convert m → µm
 
-        # Normalize checkerboard the same way as training
-        cb_f = cb.astype(np.float32)
-        if cb_min is not None and cb_max is not None:
-            denom = max(cb_max - cb_min, 1e-12)
-            cb_norm = (cb_f - cb_min) / denom
+        # Build per-sim conditioning tensor
+        if _mat_dim > 0:
+            if _mat_override is not None:
+                mat_t = _mat_override
+            else:
+                cond = _load_sim_conditioning(sim_dir, include_shot_params=_uses_shot_cond)
+                # Truncate to mat_dim in case the loaded vector is longer (legacy 7-dim model)
+                cond = cond[:_mat_dim]
+                mat_t = torch.tensor(cond, dtype=torch.float32).unsqueeze(0).to(device)
         else:
-            denom = max(float(cb_f.max() - cb_f.min()), 1e-12)
-            cb_norm = (cb_f - cb_f.min()) / denom
+            mat_t = None
 
-        cb_t = torch.tensor(cb_norm, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
+        # Build model input tensor
+        cb_f = cb.astype(np.float32)
+        if (is_multitask or is_influence) and cb_f.ndim == 3:
+            # Multi-channel input (physics CB or influence fields) — already in [0,1]
+            # Shape (C, H, W) → add batch dim → (1, C, H, W)
+            cb_t = torch.tensor(cb_f, dtype=torch.float32).unsqueeze(0).to(device)
+        else:
+            # Standard 2-D density checkerboard — normalize to [0,1]
+            if cb_min is not None and cb_max is not None:
+                denom = max(cb_max - cb_min, 1e-12)
+                cb_norm = (cb_f - cb_min) / denom
+            else:
+                denom = max(float(cb_f.max() - cb_f.min()), 1e-12)
+                cb_norm = (cb_f - cb_f.min()) / denom
+            cb_t = torch.tensor(cb_norm, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
 
         with torch.no_grad():
             if is_conv:
@@ -1476,15 +2087,22 @@ def evaluate_on_dataset(
                 pred_t = model(cb_t, nc_t, mat_t) if mat_t is not None else model(cb_t, nc_t)
                 pred = pred_t[0].cpu().numpy()
             else:
-                # DisplacementPredictor
+                # DisplacementPredictor / MultiTaskPredictor
                 if mat_t is not None and _mat_dim > 0:
-                    pred_t = model(cb_t, mat_t)
+                    out = model(cb_t, mat_t)
                 else:
-                    pred_t = model(cb_t)
+                    out = model(cb_t)
+                # MultiTaskPredictor returns a dict; extract displacement head
+                pred_t = out["displacements"] if isinstance(out, dict) else out
                 pred = pred_t[0].cpu().numpy()  # (N, 3)
 
-        # Denormalize if model was trained with normalize_displacements=True
-        pred_comp = pred[:, comp_idx] * disp_scale * 1e6
+        # Denormalize: per-sim mode uses GT-based scale (valid for within-dataset eval);
+        # global mode uses the saved disp_scale.
+        if _per_sim_norm:
+            _sim_scale = float(np.abs(gt).max()) or 1.0
+        else:
+            _sim_scale = disp_scale
+        pred_comp = pred[:, comp_idx] * _sim_scale * 1e6
 
         thresh = max(float(np.abs(gt_comp).max()) * threshold_frac, 0.5)
         mask   = np.abs(gt_comp) > thresh
@@ -1493,8 +2111,11 @@ def evaluate_on_dataset(
 
         rmse = float(np.sqrt(np.mean((pred_comp[mask] - gt_comp[mask]) ** 2)))
         r, _ = pearsonr(pred_comp[mask], gt_comp[mask])
+        peak = float(np.abs(gt_comp).max()) or 1.0
+        rel_rmse_pct = rmse / peak * 100.0
 
-        per_sim.append({"sim": sim_name, "rmse_um": rmse, "pearson_r": r})
+        per_sim.append({"sim": sim_name, "rmse_um": rmse, "pearson_r": r,
+                        "rel_rmse_pct": rel_rmse_pct})
 
         # Store median-quality example for the figure
         if fig_data is None or abs(r - float(np.median([s["pearson_r"] for s in per_sim]))) < \
@@ -1514,15 +2135,18 @@ def evaluate_on_dataset(
 
     if not per_sim:
         print("[evaluate_on_dataset] No simulations could be evaluated.")
-        return {"per_sim": [], "mean_rmse_um": float("nan"), "mean_r": float("nan"), "n_ok": 0}
+        return {"per_sim": [], "mean_rmse_um": float("nan"), "mean_r": float("nan"),
+                "mean_rel_rmse_pct": float("nan"), "n_ok": 0}
 
-    mean_rmse = float(np.mean([s["rmse_um"] for s in per_sim]))
-    mean_r    = float(np.mean([s["pearson_r"] for s in per_sim]))
+    mean_rmse         = float(np.mean([s["rmse_um"]       for s in per_sim]))
+    mean_r            = float(np.mean([s["pearson_r"]      for s in per_sim]))
+    mean_rel_rmse_pct = float(np.mean([s["rel_rmse_pct"]   for s in per_sim]))
 
     print(f"\n[Ground-truth check]  {len(per_sim)} simulations")
-    print(f"  Component  : {component}")
-    print(f"  Mean RMSE  : {mean_rmse:.3f} µm")
-    print(f"  Mean r     : {mean_r:.4f}")
+    print(f"  Component    : {component}")
+    print(f"  Mean RMSE    : {mean_rmse:.3f} µm")
+    print(f"  Mean rel RMSE: {mean_rel_rmse_pct:.1f}%")
+    print(f"  Mean r       : {mean_r:.4f}")
 
     if plot_save_path and fig_data is not None:
         import matplotlib.gridspec as gridspec
@@ -1544,7 +2168,10 @@ def evaluate_on_dataset(
         cax   = fig.add_subplot(gs[4])
 
         kw = dict(origin="lower", aspect="equal")
-        ax_cb.imshow(fig_data["cb"], cmap="Blues",   **kw)
+        _cb_show = fig_data["cb"]
+        if _cb_show.ndim == 3:
+            _cb_show = _cb_show[0]   # show shot-density channel of physics CB
+        ax_cb.imshow(_cb_show, cmap="Blues",   **kw)
         ax_cb.set_title("Input\nCheckerboard", fontsize=9)
         ax_gt.imshow(gt_2d, cmap="viridis", vmin=vmin, vmax=vmax, **kw)
         ax_gt.set_title(f"Ground Truth ${component}$ (µm)", fontsize=9)
@@ -1567,10 +2194,142 @@ def evaluate_on_dataset(
         print(f"  Figure saved: {plot_save_path}")
 
     return {
-        "per_sim":      per_sim,
-        "mean_rmse_um": mean_rmse,
-        "mean_r":       mean_r,
-        "n_ok":         len(per_sim),
+        "per_sim":           per_sim,
+        "mean_rmse_um":      mean_rmse,
+        "mean_rel_rmse_pct": mean_rel_rmse_pct,
+        "mean_r":            mean_r,
+        "n_ok":              len(per_sim),
+    }
+
+
+def evaluate_cupping_on_dataset(
+    model_path: str,
+    dataset_dir: str,
+    save_path: Optional[str] = None,
+) -> dict:
+    """Evaluate MultiTaskPredictor's cupping (Almen arc-height) predictions.
+
+    Runs inference on every simulation that has a cupping.npy ground-truth file,
+    scatters predicted vs. true cupping, and reports Pearson r.
+
+    Parameters
+    ----------
+    model_path   : Path to trained_multitask_model.pth
+    dataset_dir  : Parent folder with Simulation_N/ sub-folders
+    save_path    : Optional path to save the scatter PNG
+
+    Returns
+    -------
+    dict with keys:
+        pred_um        : np.ndarray of predicted cupping (µm)
+        true_um        : np.ndarray of ground-truth cupping (µm)
+        pearson_r      : float
+        n_ok           : int
+    """
+    from scipy.stats import pearsonr
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = torch.load(model_path, map_location=device, weights_only=False)
+    model.eval()
+
+    if not isinstance(model, MultiTaskPredictor):
+        raise TypeError(f"evaluate_cupping_on_dataset expects MultiTaskPredictor, got {type(model).__name__}")
+
+    # Load scalar_scales to denormalize cupping
+    model_dir = os.path.dirname(os.path.abspath(model_path))
+    scalar_scale_path = os.path.join(model_dir, "scalar_scales.npy")
+    mt_stats_path     = os.path.join(model_dir, "multitask_stats.npy")
+    cupping_scale = 1.0
+    if os.path.exists(scalar_scale_path):
+        cupping_scale = float(np.load(scalar_scale_path)[0])
+    elif os.path.exists(mt_stats_path):
+        cupping_scale = float(np.load(mt_stats_path)[0])
+
+    # CB normalization from normalization_stats.npy if present (for consistency)
+    norm_path = os.path.join(model_dir, "normalization_stats.npy")
+    cb_min, cb_max = None, None
+    if os.path.exists(norm_path):
+        _ns = np.load(norm_path)
+        cb_min, cb_max = float(_ns[0]), float(_ns[1])
+
+    sims = sorted(
+        [d for d in os.listdir(dataset_dir) if d.startswith("Simulation_")
+         and d[len("Simulation_"):].isdigit()],
+        key=lambda x: int(x.split("_")[1]),
+    )
+
+    pred_list, true_list = [], []
+
+    for sim_name in sims:
+        sim_dir   = os.path.join(dataset_dir, sim_name)
+        phys_path = os.path.join(sim_dir, "checkerboard_physics.npy")
+        dens_path = os.path.join(sim_dir, "checkerboard.npy")
+        cup_path  = os.path.join(sim_dir, "cupping.npy")
+
+        if not os.path.exists(cup_path):
+            continue
+
+        # Prefer physics checkerboard; fall back to density-only
+        if os.path.exists(phys_path):
+            cb = np.load(phys_path).astype(np.float32)   # (C, G, G)
+            cb_t = torch.tensor(cb, dtype=torch.float32).unsqueeze(0).to(device)
+        elif os.path.exists(dens_path):
+            cb_2d = np.load(dens_path).astype(np.float32)
+            if cb_min is not None and cb_max is not None:
+                denom = max(cb_max - cb_min, 1e-12)
+                cb_2d = (cb_2d - cb_min) / denom
+            else:
+                r = float(cb_2d.max() - cb_2d.min())
+                if r > 1e-12:
+                    cb_2d = (cb_2d - cb_2d.min()) / r
+            cb_t = torch.tensor(cb_2d, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
+        else:
+            continue
+
+        gt_cup_m = float(np.load(cup_path))
+
+        with torch.no_grad():
+            out = model(cb_t)
+        pred_cup_m = float(out["scalars"][0, 0].cpu()) * cupping_scale
+
+        pred_list.append(pred_cup_m * 1e6)
+        true_list.append(gt_cup_m * 1e6)
+
+    if len(pred_list) < 3:
+        print("[evaluate_cupping] Not enough simulations with cupping.npy")
+        return {"pred_um": np.array([]), "true_um": np.array([]), "pearson_r": float("nan"), "n_ok": 0}
+
+    pred_arr = np.array(pred_list)
+    true_arr = np.array(true_list)
+    r, _ = pearsonr(pred_arr, true_arr)
+    rmse = float(np.sqrt(np.mean((pred_arr - true_arr) ** 2)))
+
+    print(f"[Cupping validation]  n={len(pred_list)}  r={r:.4f}  RMSE={rmse:.3f} µm")
+
+    if save_path:
+        fig, ax = plt.subplots(figsize=(5, 4.5))
+        ax.scatter(true_arr, pred_arr, alpha=0.5, s=18, edgecolors="none", c="steelblue")
+        lo = min(true_arr.min(), pred_arr.min())
+        hi = max(true_arr.max(), pred_arr.max())
+        ax.plot([lo, hi], [lo, hi], "k--", lw=1, label="Perfect prediction")
+        ax.set_xlabel("Ground-truth cupping (µm)")
+        ax.set_ylabel("Predicted cupping (µm)")
+        ax.set_title(f"Almen arc-height  |  Pearson r = {r:.3f}  |  n = {len(pred_list)}")
+        ax.legend(fontsize=8)
+        os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
+        fig.savefig(save_path, dpi=200, bbox_inches="tight", facecolor="white")
+        plt.close(fig)
+        print(f"  Cupping scatter saved: {save_path}")
+
+    return {
+        "pred_um":   pred_arr,
+        "true_um":   true_arr,
+        "pearson_r": r,
+        "rmse_um":   rmse,
+        "n_ok":      len(pred_list),
     }
 
 
@@ -1767,7 +2526,7 @@ def siren_collate_fn(k_nodes: int):
     def collate(batch):
         if len(batch[0]) == 4:
             cbs, mats, xys, disps = zip(*batch)
-            mats = torch.stack(mats)    # (B, 7)
+            mats = torch.stack(mats)    # (B, mat_dim)
         else:
             cbs, xys, disps = zip(*batch)
             mats = None
@@ -2173,7 +2932,6 @@ def evaluate_model_gui(model, test_loader, criterion, pred_save_dir, device=None
 
     model.eval()
     total_mse    = 0.0
-    total_smape  = 0.0
     batch_count  = 0
     metric_count = 0  # batches where MSE was computable
 
@@ -2258,17 +3016,14 @@ def evaluate_model_gui(model, test_loader, criterion, pred_save_dir, device=None
             # Compute loss only when output and ground-truth shapes match
             if predicted_displacements.shape == displacement.shape:
                 total_mse   += criterion(predicted_displacements, displacement).item()
-                total_smape += smape(displacement, predicted_displacements).item()
                 metric_count += 1
 
     if metric_count == 0:
-        print("Warning: MSE/sMAPE could not be computed (shape mismatch, no node coords).")
+        print("Warning: MSE could not be computed (shape mismatch, no node coords).")
         return float('nan')
 
-    overall_mse   = total_mse   / metric_count
-    overall_smape = total_smape / metric_count
+    overall_mse = total_mse / metric_count
     print(f"Overall Mean Squared Error (MSE) on Test Set: {overall_mse:.10f}")
-    print(f"Overall Symmetric Mean Absolute Percentage Error (sMAPE) on Test Set: {overall_smape * 100:.10f}%")
     return overall_mse
 
 
@@ -2302,7 +3057,7 @@ def load_and_evaluate_model_gui(model_path, test_data_path, pred_save_dir,
 
     Side-effects:
         Prints checkerboard input, first-5-node predictions and ground truth
-        for the first batch, plus overall MSE and sMAPE to stdout.
+        for the first batch, plus overall MSE to stdout.
     """
     # Auto-detect GPU
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -2624,3 +3379,273 @@ def curved_surface_inference(
         "checkerboard":         cb,
         "stl_surface":          surface,
     }
+
+
+# ============================================================
+# Influence-field ConvDecoder: node-resolution physics kernels
+# ============================================================
+
+class InfluenceFieldDataset(Dataset):
+    """Dataset serving (influence_fields, disp_field) pairs.
+
+    influence_fields.npy  : (4, Nx+1, Ny+1) float32
+        Ch0 Hertz depth, Ch1 KDE, Ch2 Fx, Ch3 Fy — all in [0,1]/[-1,1]
+    displacements.npy     : (N_nodes, 3) float32  — reshaped to (3, Nx+1, Ny+1)
+    """
+
+    def __init__(self, fields: np.ndarray, displacements: np.ndarray,
+                 grid_H: int, grid_W: int, disp_scale: float = 1.0):
+        self.fields = torch.tensor(fields, dtype=torch.float32)           # (N,4,H,W)
+        _disp = displacements / disp_scale
+        # reshape flat (N_nodes, 3) → (3, H, W)
+        self.disp = torch.tensor(
+            _disp.reshape(-1, grid_H, grid_W, 3).transpose(0, 3, 1, 2),
+            dtype=torch.float32,
+        )   # (N, 3, H, W)
+        self.disp_scale = disp_scale
+
+    def __len__(self) -> int:
+        return len(self.fields)
+
+    def __getitem__(self, idx):
+        return self.fields[idx], self.disp[idx]
+
+
+def create_influence_field_loaders(
+    dataset_dir: str,
+    batch_size: int = 16,
+    normalize_disp: bool = True,
+) -> tuple:
+    """Load influence_fields.npy + displacements.npy and return DataLoaders.
+
+    Uses per-sim normalization: each simulation's displacements are divided by
+    that sim's own max absolute displacement.  This equalizes gradient signal
+    across sims with very different deformation ranges (e.g. low vs high shot
+    velocity) and avoids the ~100% rel-RMSE failure seen with global-max scaling
+    on stiff materials (316L, 4340) whose dataset-wide max is much larger than
+    any individual test sim's peak.
+
+    Returns
+    -------
+    train_loader, val_loader, test_loader, grid_H, grid_W, disp_scale, per_sim_scales
+        disp_scale      : median per-sim scale (m) — representative value for logging
+        per_sim_scales  : (N,) float32 array of per-sim max abs displacement (m)
+    """
+    sim_dirs = sorted(
+        [d for d in os.listdir(dataset_dir)
+         if os.path.isdir(os.path.join(dataset_dir, d))
+         and d.startswith("Simulation_") and d[len("Simulation_"):].isdigit()],
+        key=lambda x: int(x.split("_")[1]),
+    )
+
+    all_fields, all_disp = [], []
+    for sim_name in sim_dirs:
+        sd = os.path.join(dataset_dir, sim_name)
+        inf_path  = os.path.join(sd, "influence_fields.npy")
+        disp_path = os.path.join(sd, "displacements.npy")
+        if not os.path.exists(inf_path) or not os.path.exists(disp_path):
+            continue
+        all_fields.append(np.load(inf_path))
+        all_disp.append(np.load(disp_path))
+
+    if not all_fields:
+        raise FileNotFoundError(
+            f"No simulations with influence_fields.npy found in {dataset_dir}. "
+            "Run backfill_physics_files.py first."
+        )
+
+    fields_arr = np.stack(all_fields, axis=0)  # (N, 4, H, W)
+    disp_arr   = np.stack(all_disp,   axis=0)  # (N, nodes, 3)
+
+    grid_H = fields_arr.shape[2]
+    grid_W = fields_arr.shape[3]
+
+    if normalize_disp:
+        # Per-sim normalization: each sim scaled to [-1, 1] by its own peak.
+        per_sim_scales = np.array(
+            [float(np.abs(disp_arr[i]).max()) or 1.0 for i in range(len(disp_arr))],
+            dtype=np.float32,
+        )
+        disp_arr = (disp_arr / per_sim_scales[:, np.newaxis, np.newaxis]).astype(np.float32)
+        disp_scale = float(np.median(per_sim_scales))  # representative for logging
+    else:
+        per_sim_scales = np.ones(len(disp_arr), dtype=np.float32)
+        disp_scale = 1.0
+
+    torch.manual_seed(2024); np.random.seed(2024)
+    # disp_scale=1.0: data is already pre-normalised above
+    full_ds = InfluenceFieldDataset(fields_arr, disp_arr, grid_H, grid_W, disp_scale=1.0)
+    n = len(full_ds)
+    n_train = int(0.70 * n)
+    n_val   = int(0.15 * n)
+    n_test  = n - n_train - n_val
+    tr_ds, va_ds, te_ds = random_split(full_ds, [n_train, n_val, n_test])
+
+    _pin = torch.cuda.is_available()
+    return (
+        DataLoader(tr_ds, batch_size=batch_size, shuffle=True,  num_workers=0, pin_memory=_pin),
+        DataLoader(va_ds, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin),
+        DataLoader(te_ds, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin),
+        grid_H, grid_W, disp_scale, per_sim_scales,
+    )
+
+
+def train_influence_field_model(
+    dataset_dir:    str,
+    model_save_dir: str,
+    epochs:         int   = 120,
+    patience:       int   = 20,
+    batch_size:     int   = 16,
+    lr:             float = 1e-3,
+) -> dict:
+    """Train a ConvDecoderPredictor on node-resolution influence fields.
+
+    Uses (4, H, W) influence_fields.npy as input and (3, H, W) displacement
+    field as output — a direct physics-informed field-to-field mapping.
+
+    Expected performance (Ti+steel, 200 sims):
+        ux r ~ 0.55,  uy r ~ 0.55,  uz r ~ 0.40
+    vs current checkerboard model:
+        ux r ~ 0.37,  uz r ~ 0.09
+
+    Returns dict with mse, rmse_um, epochs_trained, disp_scale, success.
+    """
+    import time
+    from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    t0 = time.perf_counter()
+
+    try:
+        train_loader, val_loader, test_loader, grid_H, grid_W, disp_scale, _per_sim_scales = \
+            create_influence_field_loaders(dataset_dir, batch_size=batch_size)
+
+        model = ConvDecoderPredictor(
+            input_channels=4, out_H=grid_H, out_W=grid_W, mat_dim=0
+        ).to(device)
+
+        n_params = sum(p.numel() for p in model.parameters())
+        print(f"    InfluenceField ConvDecoder: grid={grid_H}x{grid_W}  "
+              f"disp_scale={disp_scale:.3e}  params={n_params:,}  device={device}")
+
+        criterion  = nn.MSELoss()
+        optimizer  = optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+        warmup_ep  = max(1, int(epochs * 0.1))
+        cosine_ep  = max(1, epochs - warmup_ep)
+        scheduler  = SequentialLR(
+            optimizer,
+            schedulers=[
+                LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=warmup_ep),
+                CosineAnnealingLR(optimizer, T_max=cosine_ep, eta_min=1e-6),
+            ],
+            milestones=[warmup_ep],
+        )
+
+        os.makedirs(model_save_dir, exist_ok=True)
+        plot_path = os.path.join(model_save_dir, "influence_field_loss.png")
+
+        best_val = float("inf")
+        patience_ctr = 0
+        train_losses, val_losses = [], []
+
+        import matplotlib; matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        use_amp = torch.cuda.is_available()
+        scaler  = torch.amp.GradScaler("cuda") if use_amp else None
+
+        for epoch in range(epochs):
+            model.train()
+            ep_loss = 0.0
+            for fields_b, disp_b in train_loader:
+                fields_b = fields_b.to(device)
+                disp_b   = disp_b.to(device)
+                optimizer.zero_grad()
+                if use_amp:
+                    with torch.amp.autocast("cuda"):
+                        pred = model(fields_b)
+                        loss = criterion(pred, disp_b)
+                    scaler.scale(loss).backward()
+                    scaler.unscale_(optimizer)
+                    nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                    scaler.step(optimizer); scaler.update()
+                else:
+                    pred = model(fields_b)
+                    loss = criterion(pred, disp_b)
+                    loss.backward()
+                    nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                    optimizer.step()
+                ep_loss += loss.item()
+            train_loss = ep_loss / max(len(train_loader), 1)
+            train_losses.append(train_loss)
+
+            model.eval()
+            val_loss = 0.0
+            with torch.no_grad():
+                for fields_b, disp_b in val_loader:
+                    if use_amp:
+                        with torch.amp.autocast("cuda"):
+                            val_loss += criterion(model(fields_b.to(device)), disp_b.to(device)).item()
+                    else:
+                        val_loss += criterion(model(fields_b.to(device)), disp_b.to(device)).item()
+            val_loss /= max(len(val_loader), 1)
+            val_losses.append(val_loss)
+            scheduler.step()
+
+            print(f"    Epoch {epoch+1}/{epochs}  train={train_loss:.4e}  val={val_loss:.4e}")
+
+            if val_loss < best_val:
+                best_val = val_loss; patience_ctr = 0
+                torch.save(model, os.path.join(model_save_dir, "influence_field_model.pth"))
+            else:
+                patience_ctr += 1
+                if patience_ctr >= patience:
+                    print(f"    Early stop at epoch {epoch+1}")
+                    break
+
+        # Final test evaluation
+        model.eval()
+        all_pred, all_true = [], []
+        with torch.no_grad():
+            for fields_b, disp_b in test_loader:
+                all_pred.append(model(fields_b.to(device)).cpu().numpy())
+                all_true.append(disp_b.numpy())
+        pred_np = np.concatenate(all_pred) * disp_scale  # (N, 3, H, W)
+        true_np = np.concatenate(all_true) * disp_scale
+        mse  = float(np.mean((pred_np - true_np) ** 2))
+        rmse = float(np.sqrt(mse)) * 1e6
+
+        # Save loss curve
+        fig, ax = plt.subplots()
+        ax.plot(train_losses, label="Train"); ax.plot(val_losses, label="Val")
+        ax.set_xlabel("Epoch"); ax.set_ylabel("MSE (normalised)"); ax.legend()
+        ax.set_title("InfluenceField ConvDecoder Training")
+        fig.savefig(plot_path, dpi=150, bbox_inches="tight"); plt.close(fig)
+
+        # Save normalization info for inference
+        np.save(os.path.join(model_save_dir, "normalization_stats.npy"),
+                np.array([0.0, 1.0, disp_scale]))  # disp_scale = median per-sim scale
+        # Signal to evaluate_on_dataset that per-sim GT scale should be used
+        np.save(os.path.join(model_save_dir, "per_sim_norm.npy"), np.array([True]))
+        # Copy reference node coords
+        ref_nc = next(
+            (Path(dataset_dir) / s / "node_coords.npy"
+             for s in sorted(os.listdir(dataset_dir),
+                             key=lambda x: int(x.split("_")[1]) if x.startswith("Simulation_") else 9999)
+             if (Path(dataset_dir) / s / "node_coords.npy").exists()),
+            None)
+        if ref_nc:
+            import shutil as _sh
+            _sh.copy2(str(ref_nc), os.path.join(model_save_dir, "reference_node_coords.npy"))
+
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        return {"mse": mse, "rmse_um": rmse, "epochs_trained": len(train_losses),
+                "disp_scale": disp_scale, "success": True}
+
+    except Exception as exc:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        return {"success": False, "error": str(exc)}

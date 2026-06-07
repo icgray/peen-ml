@@ -304,7 +304,6 @@ def _make_cosine_scheduler(optimizer, epochs, warmup_frac=0.1, eta_min=1e-6):
 @dataclass
 class TrainResult:
     mse:            float = float("nan")
-    smape_pct:      float = float("nan")
     rmse_um:        float = float("nan")
     epochs_trained: int   = 0
     train_time_s:   float = float("nan")
@@ -329,7 +328,8 @@ def train_standard(
         dataset_dir    : Parent folder with Simulation_N/ sub-folders.
         model_save_dir : Where to save the trained model + loss curve.
         use_improved   : If True use ImprovedDisplacementPredictor (4 blocks, dropout).
-        use_material   : If True load & use material feature conditioning (mat_dim=7).
+        use_material   : If True load & use material feature conditioning (mat_dim=10:
+                         7 material + 3 shot-process scalars V, D, n_shots).
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     t0 = time.perf_counter()
@@ -337,10 +337,10 @@ def train_standard(
     try:
         num_nodes, cb_size = M.infer_dataset_shape(dataset_dir)
         train_loader, val_loader, test_loader, loaded_data = M.create_data_loaders(
-            base_folder             = dataset_dir,
-            batch_size              = batch_size,
-            load_material_features  = use_material,
-            normalize_displacements = True,   # scale targets to [-1,1]
+            base_folder                       = dataset_dir,
+            batch_size                        = batch_size,
+            load_material_features            = use_material,
+            per_sim_normalize_displacements   = True,   # per-sim normalization (HOLE 2 fix)
         )
         disp_scale = loaded_data.get("disp_scale", 1.0)
 
@@ -349,7 +349,7 @@ def train_standard(
                                error="Val split empty — increase n_sims.",
                                train_time_s=time.perf_counter() - t0)
 
-        mat_dim = M.MAT_DIM if use_material else 0
+        mat_dim = M.FULL_COND_DIM if use_material else 0
 
         if use_improved:
             model = M.ImprovedDisplacementPredictor(
@@ -393,8 +393,7 @@ def train_standard(
         # ---- Evaluation ----
         mse    = M.evaluate_model(model, test_loader, criterion,
                                   device=device, use_material=use_material)
-        rmse   = float("nan")
-        smape_ = float("nan")
+        rmse = float("nan")
 
         if mse == mse:  # not NaN
             all_pred, all_true = [], []
@@ -409,16 +408,11 @@ def train_standard(
                         pred = model(cb.to(device))
                     all_pred.append(pred.cpu().numpy())
                     all_true.append(disp.numpy())
-            # Denormalize to physical units before computing metrics
-            pred_np = np.concatenate(all_pred) * disp_scale
-            true_np = np.concatenate(all_true) * disp_scale
-            rmse    = float(np.sqrt(np.mean((pred_np - true_np) ** 2))) * 1e6
-            denom   = (np.abs(true_np) + np.abs(pred_np)) / 2.0
-            safe    = denom > 1e-15
-            if safe.any():
-                smape_ = float(np.mean(
-                    np.abs(true_np[safe] - pred_np[safe]) / denom[safe]
-                )) * 100
+            # With per-sim normalization, both pred and true are already in normalized space;
+            # disp_scale is the median per-sim scale for representative logging only.
+            pred_np = np.concatenate(all_pred)
+            true_np = np.concatenate(all_true)
+            rmse    = float(np.sqrt(np.mean((pred_np - true_np) ** 2)))
 
         # Save model + normalization stats (cb + disp_scale)
         save_path = os.path.join(model_save_dir,
@@ -431,6 +425,10 @@ def train_standard(
         ], dtype=np.float64)
         np.save(os.path.join(model_save_dir, "normalization_stats.npy"), norm)
 
+        # Signal per-sim normalization so evaluate_on_dataset uses GT-based per-sim scale
+        if loaded_data.get("per_sim_norm", False):
+            np.save(os.path.join(model_save_dir, "per_sim_norm.npy"), np.array([True]))
+
         # Copy reference node coords
         ref_nc = next(
             (p / "node_coords.npy"
@@ -442,7 +440,7 @@ def train_standard(
 
         print(f"    Saved to {save_path}")
         result = TrainResult(
-            mse=float(mse), smape_pct=smape_, rmse_um=rmse,
+            mse=float(mse), rmse_um=rmse,
             epochs_trained=len(train_losses),
             train_time_s=time.perf_counter() - t0,
             success=True,
@@ -480,11 +478,11 @@ def train_conv_decoder(
     t0 = time.perf_counter()
 
     try:
-        train_loader, val_loader, test_loader, grid_H, grid_W = \
+        train_loader, val_loader, test_loader, grid_H, grid_W, _cd_disp_scale, _cd_per_sim = \
             M.create_field_data_loaders(dataset_dir, batch_size=batch_size,
                                         load_material_features=use_material)
         _, G = M.infer_dataset_shape(dataset_dir)
-        mat_dim = M.MAT_DIM if use_material else 0
+        mat_dim = M.FULL_COND_DIM if use_material else 0
 
         model = M.ConvDecoderPredictor(
             input_channels=1, out_H=grid_H, out_W=grid_W, mat_dim=mat_dim,
@@ -537,17 +535,15 @@ def train_conv_decoder(
                 all_true.append(field.numpy())
         pred_np = np.concatenate(all_pred)  # (N, 3, H, W)
         true_np = np.concatenate(all_true)
-        mse     = float(np.mean((pred_np - true_np) ** 2))
-        rmse    = float(np.sqrt(mse)) * 1e6
-        denom   = (np.abs(true_np) + np.abs(pred_np)) / 2.0
-        safe    = denom > 1e-15
-        smape_  = float(np.mean(
-            np.abs(true_np[safe] - pred_np[safe]) / denom[safe]
-        )) * 100 if safe.any() else float("nan")
+        mse  = float(np.mean((pred_np - true_np) ** 2))
+        rmse = float(np.sqrt(mse)) * 1e6
 
         save_path = os.path.join(model_save_dir,
                                  "trained_conv_decoder_full_model.pth")
         torch.save(model, save_path)
+        np.save(os.path.join(model_save_dir, "normalization_stats.npy"),
+                np.array([0.0, 1.0, _cd_disp_scale]))
+        np.save(os.path.join(model_save_dir, "per_sim_norm.npy"), np.array([True]))
 
         ref_nc = next(
             (p / "node_coords.npy"
@@ -559,7 +555,7 @@ def train_conv_decoder(
 
         print(f"    Saved to {save_path}")
         return TrainResult(
-            mse=mse, smape_pct=smape_, rmse_um=rmse,
+            mse=mse, rmse_um=rmse,
             epochs_trained=len(train_losses),
             train_time_s=time.perf_counter() - t0,
             success=True,
@@ -599,7 +595,7 @@ def train_siren(
             load_material_features=use_material,
             normalize_displacements=True,
         )
-        mat_dim = M.MAT_DIM if use_material else 0
+        mat_dim = M.FULL_COND_DIM if use_material else 0
         print(f"    disp_scale={disp_scale:.4e} m (targets normalized to [-1,1])")
 
         model = M.SIRENPredictor(
@@ -751,7 +747,7 @@ def train_siren(
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         return TrainResult(
-            mse=mse, smape_pct=float("nan"), rmse_um=rmse,
+            mse=mse, rmse_um=rmse,
             epochs_trained=len(train_losses),
             train_time_s=time.perf_counter() - t0,
             success=True,
@@ -775,7 +771,7 @@ def write_report(rows: List[Dict], path: str) -> None:
     fieldnames = [
         "model_name", "dataset", "arch",
         "n_sims", "Nx", "Ny",
-        "success", "mse", "rmse_um", "smape_pct",
+        "success", "mse", "rmse_um",
         "epochs_trained", "train_s", "error",
     ]
     with open(path, "w", newline="") as fh:
@@ -804,7 +800,6 @@ def print_summary(rows: List[Dict]) -> None:
             print(f"\n  {r['model_name']}")
             print(f"    arch={r['arch']}  dataset={r['dataset']}")
             print(f"    RMSE={r.get('rmse_um','?')} µm  "
-                  f"sMAPE={r.get('smape_pct','?')}%  "
                   f"epochs={r.get('epochs_trained','?')}  "
                   f"time={r.get('train_s','?')}s")
     if fail:
@@ -817,6 +812,119 @@ def print_summary(rows: List[Dict]) -> None:
 # ---------------------------------------------------------------------------
 # Main orchestration
 # ---------------------------------------------------------------------------
+
+def _train_multitask(
+    dataset_dir:         str,
+    model_save_dir:      str,
+    epochs:              int   = 100,
+    patience:            int   = 20,
+    batch_size:          int   = 32,
+    lr:                  float = 3e-4,
+    use_material:        bool  = False,
+    loss_weights:        tuple = (1.0, 0.005, 0.01),
+    warmup_disp_epochs:  int   = 20,
+    stress_components:   int   = 2,
+) -> TrainResult:
+    """Train MultiTaskPredictor (physics 6-ch CB → displacement + stress + scalars)."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    t0 = time.perf_counter()
+    try:
+        train_loader, val_loader, test_loader, stats = M.create_multitask_data_loaders(
+            dataset_dir,
+            batch_size     = batch_size,
+            load_material_features = use_material,
+            use_physics_cb = True,
+        )
+        if len(val_loader) == 0:
+            return TrainResult(success=False, error="Val split empty.",
+                               train_time_s=time.perf_counter() - t0)
+
+        model = M.MultiTaskPredictor(
+            input_channels   = stats["input_channels"],
+            num_nodes        = stats["num_nodes"],
+            checkerboard_size= stats["checkerboard_size"],
+            mat_dim          = M.MAT_DIM if use_material else 0,
+            predict_stress   = True,
+            predict_scalars  = True,
+        ).to(device)
+
+        n_params = sum(p.numel() for p in model.parameters())
+        print(f"    MultiTaskPredictor: nodes={stats['num_nodes']}  "
+              f"C_in={stats['input_channels']}  params={n_params:,}  device={device}")
+
+        optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+        scheduler = _make_cosine_scheduler(optimizer, epochs)
+        os.makedirs(model_save_dir, exist_ok=True)
+        plot_path = os.path.join(model_save_dir, "training_loss_curve.png")
+
+        train_losses, val_losses = M.train_model_multitask(
+            model               = model,
+            train_loader        = train_loader,
+            val_loader          = val_loader,
+            optimizer           = optimizer,
+            scheduler           = scheduler,
+            epochs              = epochs,
+            patience            = patience,
+            device              = device,
+            plot_save_path      = plot_path,
+            use_amp             = torch.cuda.is_available(),
+            max_grad_norm       = 1.0,
+            loss_weights        = loss_weights,
+            use_material        = use_material,
+            stats               = stats,
+            warmup_disp_epochs  = warmup_disp_epochs,
+            stress_components   = stress_components,
+        )
+
+        # Evaluate displacement RMSE on test set (denormalized)
+        model.eval()
+        all_pred, all_true = [], []
+        with torch.no_grad():
+            for batch in test_loader:
+                if use_material:
+                    cb, mat_f, disp_t, stress_t, scalar_t = batch
+                    out = model(cb.to(device), mat_f.to(device))
+                else:
+                    cb, disp_t, stress_t, scalar_t = batch
+                    out = model(cb.to(device))
+                all_pred.append(out["displacements"].cpu().numpy())
+                all_true.append(disp_t.numpy())
+        pred_np = np.concatenate(all_pred) * stats["disp_scale"]
+        true_np = np.concatenate(all_true) * stats["disp_scale"]
+        mse   = float(np.mean((pred_np - true_np) ** 2))
+        rmse  = float(np.sqrt(mse)) * 1e6
+
+        save_path = os.path.join(model_save_dir, "trained_multitask_model.pth")
+        torch.save(model, save_path)
+        np.save(os.path.join(model_save_dir, "multitask_stats.npy"), np.array([
+            stats["disp_scale"], stats["stress_scale"],
+        ]))
+        # Per-sim normalization flag (always True for MT, which uses per-sim by default)
+        if stats.get("per_sim_norm", False):
+            np.save(os.path.join(model_save_dir, "per_sim_norm.npy"), np.array([True]))
+        np.save(os.path.join(model_save_dir, "scalar_scales.npy"),
+                stats["scalar_scales"])
+
+        del model, train_loader, val_loader, test_loader
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        return TrainResult(
+            mse=mse, rmse_um=rmse,
+            epochs_trained=len(train_losses),
+            train_time_s=time.perf_counter() - t0,
+            success=True,
+        )
+
+    except Exception as exc:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        return TrainResult(
+            success=False,
+            train_time_s=time.perf_counter() - t0,
+            error=str(exc),
+        )
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -972,8 +1080,7 @@ def main() -> None:
             )
             status = "OK" if tr.success else "FAIL"
             if tr.success:
-                print(f"    [{status}] RMSE={tr.rmse_um:.2f} µm  "
-                      f"sMAPE={tr.smape_pct:.1f}%  "
+                print(f"    [{status}] RMSE={tr.rmse_um:.2f}  "
                       f"epochs={tr.epochs_trained}  "
                       f"time={tr.train_time_s:.0f}s")
             else:
@@ -988,7 +1095,6 @@ def main() -> None:
                 "success":        tr.success,
                 "mse":            f"{tr.mse:.4e}" if tr.success else "nan",
                 "rmse_um":        f"{tr.rmse_um:.3f}" if tr.success else "nan",
-                "smape_pct":      f"{tr.smape_pct:.2f}" if tr.success else "nan",
                 "epochs_trained": tr.epochs_trained,
                 "train_s":        f"{tr.train_time_s:.1f}",
                 "error":          tr.error or "",
@@ -1024,7 +1130,7 @@ def main() -> None:
                 model_name        = "C_MatCond_MultiMat",
                 train_fn          = train_standard,
                 dataset_path      = merged_dir,
-                arch              = "ImprovedDisplacementPredictor(mat_dim=7)",
+                arch              = "ImprovedDisplacementPredictor(mat_dim=10)",
                 n_sims            = args.n_sims * 25, Nx=50, Ny=50,
                 batch_size_override = max(8, args.batch // 2),  # smaller for 5000-sim dataset
                 use_improved      = True, use_material=True,
@@ -1074,6 +1180,114 @@ def main() -> None:
                 use_material = False,
                 k_nodes      = 1024,
             )
+
+        # ---- Model MT: MultiTaskPredictor on Ti+steel (physics checkerboard) ----
+        _mt_dir  = os.path.join(output_root, "Models", "MT_MultiTask_Ti_Steel")
+        _mt_avail = sum(
+            1 for d in os.listdir(ti_steel_dir)
+            if d.startswith("Simulation_") and
+            os.path.exists(os.path.join(ti_steel_dir, d, "checkerboard_physics.npy"))
+        ) if os.path.isdir(ti_steel_dir) else 0
+
+        if _mt_avail >= 7:
+            print(f"\n  [MT_MultiTask_Ti_Steel]  arch=MultiTaskPredictor  "
+                  f"sims={_mt_avail}  (6-ch physics CB)")
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            import gc; gc.collect()
+            _mt_result = _train_multitask(
+                dataset_dir    = ti_steel_dir,
+                model_save_dir = _mt_dir,
+                epochs         = args.epochs,
+                patience       = args.patience,
+                batch_size     = args.batch,
+                use_material   = False,
+            )
+            if _mt_result.success:
+                print(f"    [OK] disp_RMSE={_mt_result.rmse_um:.2f} µm  "
+                      f"epochs={_mt_result.epochs_trained}  time={_mt_result.train_time_s:.0f}s")
+            else:
+                print(f"    [FAIL] {_mt_result.error}")
+            report_rows.append({
+                "model_name":     "MT_MultiTask_Ti_Steel",
+                "dataset":        os.path.basename(ti_steel_dir),
+                "arch":           "MultiTaskPredictor",
+                "n_sims":         _mt_avail,
+                "Nx":             50, "Ny": 50,
+                "success":        _mt_result.success,
+                "mse":            f"{_mt_result.mse:.4e}" if _mt_result.success else "nan",
+                "rmse_um":        f"{_mt_result.rmse_um:.3f}" if _mt_result.success else "nan",
+                "epochs_trained": _mt_result.epochs_trained,
+                "train_s":        f"{_mt_result.train_time_s:.1f}",
+                "error":          _mt_result.error or "",
+            })
+        else:
+            print(f"\n  [MT_MultiTask_Ti_Steel] SKIP — only {_mt_avail} sims with "
+                  "checkerboard_physics.npy (need ≥7; regenerate dataset first)")
+
+        # ---- Models I/J/K: InfluenceField ConvDecoder on various datasets ----
+        def _run_influence(model_name, dataset_dir, n_sims, Nx, Ny):
+            """Train + record one InfluenceField ConvDecoder variant."""
+            inf_avail = sum(
+                1 for d in (os.listdir(dataset_dir) if os.path.isdir(dataset_dir) else [])
+                if d.startswith("Simulation_") and
+                os.path.exists(os.path.join(dataset_dir, d, "influence_fields.npy"))
+            )
+            if inf_avail < 7:
+                print(f"\n  [{model_name}] SKIP — only {inf_avail} sims with "
+                      "influence_fields.npy (need ≥7; run backfill_physics_files.py first)")
+                return
+            print(f"\n  [{model_name}]  arch=InfluenceField ConvDecoder  "
+                  f"sims={inf_avail}  (4-ch influence fields)")
+            save_dir = os.path.join(output_root, "Models", model_name)
+            os.makedirs(save_dir, exist_ok=True)
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            import gc; gc.collect()
+            res = M.train_influence_field_model(
+                dataset_dir    = dataset_dir,
+                model_save_dir = save_dir,
+                epochs         = args.epochs,
+                patience       = args.patience,
+            )
+            if res.get("success"):
+                print(f"    [OK] RMSE={res['rmse_um']:.2f}  epochs={res['epochs_trained']}")
+            else:
+                print(f"    [FAIL] {res.get('error','unknown')}")
+            report_rows.append({
+                "model_name":     model_name,
+                "dataset":        os.path.basename(dataset_dir),
+                "arch":           "InfluenceField ConvDecoder",
+                "n_sims":         inf_avail,
+                "Nx":             Nx, "Ny": Ny,
+                "success":        res.get("success", False),
+                "mse":            f"{res.get('mse', float('nan')):.4e}" if res.get("success") else "nan",
+                "rmse_um":        f"{res.get('rmse_um', float('nan')):.3f}" if res.get("success") else "nan",
+                "epochs_trained": res.get("epochs_trained", 0),
+                "train_s":        f"{res.get('train_time_s', 0):.1f}" if "train_time_s" in res else "nan",
+                "error":          res.get("error", ""),
+            })
+
+        # I variants: 5 key material combos (200-sim each)
+        for wp, sp in key_combos:
+            tag    = f"{wp.replace('-','_')}__{sp}"
+            ds_dir = os.path.join(output_root, f"Dataset_{tag}_{args.n_sims}")
+            _run_influence(f"I_InfluenceField_{tag}", ds_dir, args.n_sims, 50, 50)
+
+        # J: InfluenceField on Ti+steel 2000-sim (tests data-scaling hypothesis)
+        ti_steel_2000_dir = os.path.join(output_root, "Dataset_Ti_6Al_4V__steel_2000")
+        if os.path.isdir(ti_steel_2000_dir):
+            _run_influence("J_InfluenceField_Ti_steel_2000", ti_steel_2000_dir, 2000, 50, 50)
+        else:
+            print(f"\n  [J_InfluenceField_Ti_steel_2000] SKIP — dataset not found: {ti_steel_2000_dir}")
+
+        # K: InfluenceField on HighRes Ti+steel (tests resolution scaling)
+        if not args.no_hires:
+            hires_dir_k = os.path.join(output_root, f"Dataset_HighRes_Ti_Steel_{args.hires}")
+            if os.path.isdir(hires_dir_k):
+                _run_influence("K_InfluenceField_HighRes", hires_dir_k, args.hires, 100, 100)
+            else:
+                print(f"\n  [K_InfluenceField_HighRes] SKIP — dataset not found: {hires_dir_k}")
 
         # ---- Write report ----
         report_path = os.path.join(output_root, "large_scale_results.csv")

@@ -86,6 +86,10 @@ from impact_sim import ShotPeenParams          # noqa: E402
 from multi_shot_sim import (                   # noqa: E402
     MultiShotParams,
     run_multi_shot_simulation,
+    compute_physics_checkerboard,
+    compute_influence_fields,
+    compute_cupping_from_profile,
+    element_to_nodal_stress,
 )
 from materials import (                        # noqa: E402
     get_workpiece,
@@ -416,6 +420,49 @@ def generate_single_simulation(
             verbose=False,
             grid_size=gen_params.checkerboard_size,
         )
+
+        # ---- Save physics-rich inputs and extended targets ----
+        G = gen_params.checkerboard_size
+
+        # 6-channel physics checkerboard
+        phys_cb = compute_physics_checkerboard(
+            results["per_shot_physics"], G,
+            gen_params.Lx, gen_params.Ly,
+        )
+        np.save(os.path.join(out_folder, "checkerboard_physics.npy"), phys_cb)
+
+        # 4-channel node-resolution influence fields (physics kernels at FEM resolution)
+        # Requires at least one shot to have valid plastic zone params
+        if results["per_shot_physics"]:
+            sp0 = results["per_shot_physics"][0]
+            inf_fields = compute_influence_fields(
+                shot_positions = results["centres"],          # (M, 2)
+                node_coords    = results["node_coords"],      # (N, 3)
+                a_p            = sp0["a_p"],
+                r_p            = sp0["r_p"],
+                delta_p        = sp0["delta_p"],
+                Nx             = gen_params.Nx,
+                Ny             = gen_params.Ny,
+            )
+            np.save(os.path.join(out_folder, "influence_fields.npy"), inf_fields)
+
+        # Global Almen arc-height (cupping)
+        cupping_m = compute_cupping_from_profile(
+            results["sR_depth_profile"],
+            E_b=wp_props["E_b"],
+            t_plate=0.003,          # 3 mm default plate thickness
+            L_plate=gen_params.Lx,
+        )
+        np.save(os.path.join(out_folder, "cupping.npy"),
+                np.array(cupping_m, dtype=np.float32))
+
+        # Nodal stresses (element-averaged)
+        connectivity = results["element_connectivity"]
+        num_nodes = len(results["node_labels"])
+        nodal_stress = element_to_nodal_stress(
+            results["stresses"], connectivity, num_nodes
+        )
+        np.save(os.path.join(out_folder, "nodal_stresses.npy"), nodal_stress)
 
         # Write a plain-text metadata file for traceability
         _write_metadata(out_folder, sim_index, gen_params, bp, msp,
