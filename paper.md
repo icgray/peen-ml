@@ -58,12 +58,10 @@ for design exploration. Analytical models such as the Shen & Atluri (2006) elast
 model [@shenatluri2006] provide closed-form single-shot solutions but cannot directly predict
 multi-shot spatial displacement fields over arbitrary coverage patterns.
 
-`peen-ml` addresses this gap with three contributions. First, a Python-native multi-shot physics
-simulator completes one simulation in approximately 2 seconds on a modern CPU, eliminating the
-need for commercial FEA software and allowing dataset generation at scale. Second, three CNN
-architectures—described in the Software Design section—perform inference on a new shot pattern in
-under one second. Third, a GUI makes the full generate–train–evaluate workflow accessible to
-process engineers and students who are not Python or machine learning specialists.
+`peen-ml` addresses this gap with a Python-native multi-shot physics simulator (~2 s per
+simulation, no commercial software required), three CNN architectures that perform inference
+in under one second, and a GUI that makes the full generate–train–evaluate workflow accessible
+to engineers without machine learning expertise.
 
 
 # State of the Field
@@ -96,13 +94,10 @@ novelty of `peen-ml` as an open-source tool.
 ## Physics Simulator
 
 `impact_sim.py` implements the Shen & Atluri (2006) closed-form elastic-plastic impact model
-[@shenatluri2006], covering Hertzian contact theory (Equations 1–8), bilinear hardening
-plasticity (Equations 15–26), plastic zone geometry (Equations 41–45), and residual stress
-depth profiles (Equations 27–36). `multi_shot_sim.py` extends this to multi-shot patterns
-over a structured mesh using NumPy [@numpy2020] and SciPy [@scipy2020], and
-`native_dataset_gen.py` parallelises generation across CPU cores using Python's
-`multiprocessing` module. A 50×50-node mesh simulation completes in approximately 2 seconds
-on a laptop CPU, compared to hours for equivalent FEA analyses.
+[@shenatluri2006] using NumPy [@numpy2020] and SciPy [@scipy2020]. `multi_shot_sim.py`
+extends it to multi-shot patterns over a structured mesh, and `native_dataset_gen.py`
+parallelises generation with Python's `multiprocessing` module. A 50×50-node simulation
+completes in ~2 seconds on a laptop CPU, versus hours for equivalent FEA.
 
 ## Material Library
 
@@ -190,22 +185,27 @@ material pair) reveals a strong dependence on input representation. The checkerb
 architecture achieves in-plane $r = 0.33$–$0.59$ across five material pairs; the
 InfluenceField ConvDecoder—using four physics-derived spatial maps (Hertz depth, shot KDE,
 lateral forces $F_x$, $F_y$)—achieves $r = 0.95$–$0.97$ in-plane and $r = 0.67$–$0.71$
-out-of-plane, with 8–11\% relative RMSE. See \autoref{tab:largescale}.
+out-of-plane, with 8–11\% relative RMSE. Scaling from 200→2000 simulations (J) and from 51×51→101×101 output resolution (K)
+each improve uz $r$ to 0.74–0.76 while holding ux $r = 0.97$. The MultiTaskPredictor
+jointly predicts displacements (ux $r = 0.55$) and Almen cupping arc-height
+(cupping $r = 0.82$). Full results are in \autoref{tab:largescale}.
 
-| Architecture | Input | Mesh | ux $r$ | ux rel RMSE | uz $r$ | RMSE ux |
+| Architecture | Input | Mesh | Sims | ux $r$ | ux rel RMSE | uz $r$ |
 |---|---|---|---|---|---|---|
-| ImprovedDispl. (Ti+steel) | Checkerboard | 51×51 | 0.37 | 40% | 0.13 | 13.9 µm |
-| ImprovedDispl. (316L+ceramic) | Checkerboard | 51×51 | 0.59 | 77% | 0.08 | 52.5 µm |
-| ImprovedDispl. (Al+glass) | Checkerboard | 51×51 | 0.37 | 34% | 0.16 | 7.5 µm |
-| MatCond (25 combos, mat+shot cond.) | Checkerboard | 51×51 | 0.67 | 21% | 0.27 | 14.7 µm |
-| ConvDecoder HighRes (Ti+steel) | Checkerboard | 101×101 | 0.30 | 30% | 0.04 | 13.4 µm |
-| **I-Ti+steel** | **Physics maps** | **51×51** | **0.95** | **11%** | **0.70** | **3.7 µm** |
-| **I-316L+ceramic** | **Physics maps** | **51×51** | **0.97** | **8%** | **0.67** | **12.4 µm** |
-| **I-Al+glass** | **Physics maps** | **51×51** | **0.95** | **11%** | **0.67** | **2.3 µm** |
-| **I-Inconel+tungsten** | **Physics maps** | **51×51** | **0.96** | **9%** | **0.71** | **5.9 µm** |
-| **I-4340+cast iron** | **Physics maps** | **51×51** | **0.97** | **8%** | **0.68** | **8.6 µm** |
+| ImprovedDispl. (Ti+steel) | Checkerboard | 51×51 | 200 | 0.37 | 40% | 0.13 |
+| ImprovedDispl. (316L+ceramic) | Checkerboard | 51×51 | 200 | 0.59 | 77% | 0.08 |
+| ImprovedDispl. (Al+glass) | Checkerboard | 51×51 | 200 | 0.37 | 34% | 0.16 |
+| MatCond (25 combos) | Checkerboard | 51×51 | 5000 | 0.67 | 21% | 0.27 |
+| MultiTask (disp+cupping, cupping $r$=0.82) | Checkerboard | 51×51 | 200 | 0.55 | 31% | 0.36 |
+| **I-Ti+steel** | **Physics maps** | **51×51** | **200** | **0.95** | **11%** | **0.70** |
+| **I-316L+ceramic** | **Physics maps** | **51×51** | **200** | **0.97** | **8%** | **0.67** |
+| **I-Al+glass** | **Physics maps** | **51×51** | **200** | **0.95** | **11%** | **0.67** |
+| **I-Inconel+tungsten** | **Physics maps** | **51×51** | **200** | **0.96** | **9%** | **0.71** |
+| **I-4340+cast iron** | **Physics maps** | **51×51** | **200** | **0.97** | **8%** | **0.68** |
+| **J-Ti+steel (2000-sim)** | **Physics maps** | **51×51** | **2000** | **0.97** | **9%** | **0.76** |
+| **K-HighRes (101×101)** | **Physics maps** | **101×101** | **300** | **0.97** | **8%** | **0.74** |
 
-: Large-scale results. "200 sims" rows use 200 simulations per material pair; MatCond uses 5000 total across 25 combinations. Parameter range: V = 10–80 m/s, D = 0.1–1.5 mm. ConvDecoder HighRes uses a 101×101 output grid (300 Ti+steel sims); all others use a 51×51 grid. $r$ = Pearson correlation (pattern fidelity, scale-invariant). rel RMSE = RMSE / peak\_gt $\times$ 100\% (scale accuracy, nodes with $|u| > 5\%$ of maximum). Physics maps = four per-simulation fields (Hertz depth, KDE, $F_x$, $F_y$). \label{tab:largescale}
+: Large-scale results. MatCond uses 5000 sims across 25 material combinations; all others use the listed sim count per material pair. Parameter range: V = 10–80 m/s, D = 0.1–1.5 mm. $r$ = Pearson correlation (pattern fidelity, scale-invariant). rel RMSE = RMSE / peak\_gt $\times$ 100\% (scale accuracy, nodes with $|u| > 5\%$ of maximum). Physics maps = four per-simulation fields (Hertz depth, KDE, $F_x$, $F_y$). J/K are ablations: J tests 200→2000 sim scaling, K tests 51×51→101×101 resolution scaling. \label{tab:largescale}
 
 # Limitations
 
