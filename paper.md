@@ -99,9 +99,10 @@ novelty of `peen-ml` as an open-source tool.
 [@shenatluri2006], covering Hertzian contact theory (Equations 1–8), bilinear hardening
 plasticity (Equations 15–26), plastic zone geometry (Equations 41–45), and residual stress
 depth profiles (Equations 27–36). `multi_shot_sim.py` extends this to multi-shot patterns
-over a structured mesh, and `native_dataset_gen.py` parallelises generation across CPU
-cores using Python's `multiprocessing` module. A 50×50-node mesh simulation completes in
-approximately 2 seconds on a laptop CPU, compared to hours for equivalent FEA analyses.
+over a structured mesh using NumPy [@numpy2020] and SciPy [@scipy2020], and
+`native_dataset_gen.py` parallelises generation across CPU cores using Python's
+`multiprocessing` module. A 50×50-node mesh simulation completes in approximately 2 seconds
+on a laptop CPU, compared to hours for equivalent FEA analyses.
 
 ## Material Library
 
@@ -115,8 +116,9 @@ while retaining amplitude information.
 
 ## Three CNN Architectures
 
-All three architectures share a common three-block CNN encoder with interleaved channel and
-spatial attention modules [@cbam2018]. They differ in how they decode to displacement predictions:
+All three architectures are implemented in PyTorch [@pytorch2019] and share a common
+three-block CNN encoder with interleaved channel and spatial attention modules [@cbam2018].
+They differ in how they decode to displacement predictions:
 
 **DisplacementPredictor** uses a fully connected decoder that maps the flattened encoder
 output directly to N×3 nodal displacements. It is simple to train but requires retraining for
@@ -142,8 +144,8 @@ displacement vectors into the local surface normal frame of each STL vertex.
 
 ## Curved Surface and Nozzle Trajectory
 
-`stl_surface.py` loads arbitrary STL meshes, computes per-vertex normals, and builds a
-KD-tree for nearest-vertex lookup. `nozzle_trajectory.py` generates parameterised scan
+`stl_surface.py` loads arbitrary STL meshes via trimesh [@trimesh], computes per-vertex
+normals, and builds a KD-tree for nearest-vertex lookup. `nozzle_trajectory.py` generates parameterised scan
 patterns (raster, spiral, zigzag) or reads custom waypoints from CSV or NumPy files.
 `curved_surface_sim.py` orchestrates full inference on curved surfaces by composing the
 flat-plate predictor, the three-layer interpolation system, and the normal-frame rotation.
@@ -154,7 +156,7 @@ flat-plate predictor, the three-layer interpolation system, and the normal-frame
 Load & Evaluate) shown in \autoref{fig:gui}. All three CNN architectures, material selection,
 STL curved-surface mode, and nozzle trajectory configuration are accessible through the GUI
 without requiring Python or ML knowledge. Training runs in a background thread with epoch-by-epoch
-loss streamed to a log panel.
+loss streamed to a log panel; displacement field figures are rendered with Matplotlib [@matplotlib2007].
 
 ![The peen-ml GUI. Left: Generate Dataset panel with material and shot parameter controls. Centre: Train Model panel showing architecture selection and training progress. Right: Load & Evaluate panel with STL curved-surface and nozzle trajectory options.\label{fig:gui}](images/gui_composite.png){ width=100% }
 
