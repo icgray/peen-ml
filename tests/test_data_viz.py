@@ -37,6 +37,7 @@ if src_path not in sys.path:
 from data_viz import (  # noqa: E402
     compute_deformed_mesh,
     load_data,
+    render_result_panels,
     visualize_all,
     visualize_checkerboard,
     visualize_deformation,
@@ -443,6 +444,70 @@ class TestVisualizeAll:
 
 
 # ============================================================================
+# ============================================================================
+# render_result_panels
+# ============================================================================
+
+
+def _make_panels_folder(tmp_path, with_stress=True, N=100):
+    """Create directory and write node_coords, displacements, and optionally nodal_stresses."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(0)
+    side = int(N**0.5)
+    xs = np.linspace(0, 0.01, side)
+    ys = np.linspace(0, 0.01, side)
+    Xg, Yg = np.meshgrid(xs, ys)
+    nc = np.stack([Xg.ravel(), Yg.ravel(), np.zeros(side * side)], axis=1)
+    disp = rng.uniform(-1e-5, 1e-5, size=(side * side, 3)).astype(np.float32)
+    np.save(tmp_path / "node_coords.npy", nc)
+    np.save(tmp_path / "displacements.npy", disp)
+    if with_stress:
+        ns = rng.uniform(-50e6, 0, size=(side * side, 4)).astype(np.float32)
+        np.save(tmp_path / "nodal_stresses.npy", ns)
+    return tmp_path
+
+
+class TestRenderResultPanels:
+    def test_creates_png(self, tmp_path):
+        """Smoke: render_result_panels saves a PNG file."""
+        folder = _make_panels_folder(tmp_path / "sim")
+        out = str(tmp_path / "panels.png")
+        result = render_result_panels(str(folder), out)
+        assert result == out
+        assert os.path.exists(out), "render_result_panels must save the PNG"
+
+    def test_returns_save_path(self, tmp_path):
+        folder = _make_panels_folder(tmp_path / "sim")
+        out = str(tmp_path / "panels.png")
+        ret = render_result_panels(str(folder), out)
+        assert ret == out
+
+    def test_works_without_stress_file(self, tmp_path):
+        """Without nodal_stresses.npy the stress row shows placeholders (no crash)."""
+        folder = _make_panels_folder(tmp_path / "sim", with_stress=False)
+        out = str(tmp_path / "no_stress.png")
+        render_result_panels(str(folder), out)
+        assert os.path.exists(out)
+
+    def test_missing_displacements_returns_early(self, tmp_path):
+        """Edge: folder missing displacements.npy returns save_path without crashing."""
+        folder = tmp_path / "empty_sim"
+        folder.mkdir()
+        nc = np.zeros((9, 3))
+        np.save(folder / "node_coords.npy", nc)
+        out = str(tmp_path / "early_return.png")
+        result = render_result_panels(str(folder), out)
+        assert result == out  # returns early, no crash
+
+    def test_missing_node_coords_returns_early(self, tmp_path):
+        """Edge: folder missing node_coords.npy returns save_path without crashing."""
+        folder = tmp_path / "no_coords"
+        folder.mkdir()
+        out = str(tmp_path / "no_coords_out.png")
+        result = render_result_panels(str(folder), out)
+        assert result == out
+
+
 # Entry point
 # ============================================================================
 
