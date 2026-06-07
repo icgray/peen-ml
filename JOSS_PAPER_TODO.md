@@ -12,6 +12,133 @@
 
 ---
 
+## SESSION NOTES — last updated 2026-06-06 (normalization fixes + full retrain)
+
+### What was done this session (2026-06-06, second session)
+
+**Root cause found and fixed: per-sim normalization missing from two loaders**
+
+The `create_influence_field_loaders` and `create_field_data_loaders` functions both used
+global-max normalization instead of per-sim normalization.  For datasets where deformation
+magnitude varies 10–50× across simulations (e.g. 316L+ceramic: 30 µm to 2245 µm peak),
+the low-amplitude sims were effectively excluded from training and produced near-100% rel
+RMSE.  The fix mirrors the HOLE 2 fix already applied to `create_data_loaders`:
+divide each sim's displacements by its own max, save `per_sim_norm.npy` alongside the
+model so `evaluate_on_dataset` uses GT-based per-sim scale at eval time.
+
+**Model retrains completed (all in LargeScaleRun1/Models/)**
+
+| Model | Before ux r | After ux r | Before rel% | After rel% |
+|---|---|---|---|---|
+| I - Ti+steel | 0.78 | **0.95** | 39% | **11%** |
+| I - 316L+ceramic | 0.65 | **0.97** | 97% | **8%** |
+| I - Inconel+tungsten | 0.57 | **0.96** | 70% | **9%** |
+| I - Al+glass | 0.80 | **0.95** | 29% | **11%** |
+| I - 4340+cast_iron | 0.67 | **0.97** | 89% | **8%** |
+| C - MatCond MultiMat | 0.35 | **0.67** | 58% | **21%** |
+| E - ConvDecoder HighRes | 0.003 (broken) | **0.30** | 62134% | **30%** |
+
+**C improvement** (0.35 → 0.67) is from mat_dim 7→10 fix adding V, D, n_shots conditioning.
+**E fix** required per-sim norm in `create_field_data_loaders` + saving normalization_stats.npy
+and per_sim_norm.npy.  The training RMSE diagnostic in `train_conv_decoder` was also
+corrected (was multiplying [0,1]-normalized residuals by 1e6 instead of by disp_scale×1e6).
+
+**Final confirmed eval_results.csv (LargeScaleRun1, 2026-06-06)**
+
+```
+A - Std Ti+steel 200           ux r=0.336  rel=57%   uz r=0.093
+B - Improved Ti+steel 200      ux r=0.374  rel=40%   uz r=0.135
+C - MatCond MultiMat 5000      ux r=0.672  rel=21%   uz r=0.275  ← mat_dim=10 fix
+D - Improved Ti+steel 200      ux r=0.374  rel=40%   uz r=0.135
+D - Improved 316L+ceramic      ux r=0.593  rel=77%   uz r=0.078
+D - Improved Inconel+tungsten  ux r=0.434  rel=44%   uz r=0.115
+D - Improved Al+glass          ux r=0.371  rel=34%   uz r=0.163
+D - Improved 4340+cast_iron    ux r=0.521  rel=67%   uz r=0.078
+E - ConvDecoder HighRes 300    ux r=0.298  rel=30%   uz r=0.038  ← per-sim norm fix
+G - Improved Al+glass 2000     ux r=0.334  rel=33%   uz r=0.087
+H - Improved Ti+steel 2000     ux r=0.380  rel=37%   uz r=0.102
+MT- MultiTask Ti+steel 200     ux r=0.306  rel=60%   uz r=0.061  cupping r=0.82
+I - InfluenceField Ti+steel    ux r=0.952  rel=11%   uz r=0.698  ← per-sim norm fix
+I - InfluenceField 316L+cer    ux r=0.973  rel= 8%   uz r=0.674
+I - InfluenceField Inconel+W   ux r=0.963  rel= 9%   uz r=0.706
+I - InfluenceField Al+glass    ux r=0.953  rel=11%   uz r=0.669
+I - InfluenceField 4340+CI     ux r=0.969  rel= 8%   uz r=0.681
+```
+
+**Other changes**
+- `CONTRIBUTING.md` created (required for JOSS)
+- `paper.md`: added Table 2 (large-scale results) with all retrained numbers; updated accuracy
+  paragraph to state r=0.95–0.97 for InfluenceField; E row added to table
+- `run_eval.py`: E added to MODEL_CATALOGUE
+- All changes committed: `038f530` + RMSE diagnostic fix (uncommitted, stage before next session)
+
+### What to do NEXT SESSION (priority order)
+
+#### 1. BLOCKING — do before any submission attempt
+
+- [ ] **Get ORCIDs** for all 4 authors: Harshavardhan Raje, Onest Rexhepi, Jiachen Zhong,
+  Xuanyu Shen.  Register free at https://orcid.org and replace the `0000-XXXX-XXXX-XXXX`
+  placeholders in `paper.md` YAML header.  JOSS will reject without valid ORCIDs.
+
+- [ ] **Create git tag and GitHub Release**:
+  ```bash
+  git tag -a v0.1.0 -m "Initial release: peen-ml with InfluenceField ConvDecoder"
+  git push origin v0.1.0
+  ```
+  Then create a GitHub Release from the tag with a brief changelog.
+
+- [ ] **Zenodo archive**: go to https://zenodo.org, link the GitHub repo under Settings →
+  GitHub, flip the toggle for this repo ON, then push the v0.1.0 tag — Zenodo
+  auto-creates the archive and DOI.  Copy the DOI badge Markdown and add it to README.md.
+  Record the DOI in `paper.md` YAML (the `doi:` field under the repository entry if desired).
+
+#### 2. HIGH PRIORITY — needed for a strong paper
+
+- [ ] **Verify pandoc compilation**:
+  ```bash
+  pandoc paper.md --bibliography paper.bib --citeproc -o paper.pdf
+  ```
+  Fix any citation key mismatches or Markdown table rendering issues before submission.
+
+- [ ] **Commit RMSE diagnostic fix** in `large_scale_train.py` (done in code, not yet staged):
+  ```bash
+  git add large_scale_train.py && git commit -m "Fix train_conv_decoder RMSE diagnostic"
+  ```
+
+- [ ] **Regenerate pred_vs_gt.png** from LargeScaleRun1 using the median-r selection logic:
+  ```bash
+  python make_pred_gt_fig.py --run LargeScaleRun1 --model I_InfluenceField_Ti_Steel
+  ```
+  The current `images/pred_vs_gt.png` shows a 500-sim benchmark case; the paper caption
+  now references large-scale InfluenceField results.  Caption must match the figure.
+
+- [ ] **Paper word count**: Run `pandoc paper.md --to plain | wc -w`.  Target 750–1750 words
+  (body only).  Trim if over; the new Table 2 adds length.
+
+#### 3. OPTIONAL — strengthens results, not blocking
+
+- [ ] **Train J model** (InfluenceField Ti+steel 2000-sim, data-scaling ablation):
+  ```bash
+  python backfill_physics_files.py --dataset LargeScaleRun1/Dataset_Ti_6Al_4V__steel_2000
+  python retrain_influence_models.py  # add J variant to the script first
+  ```
+  Expected question: does 200→2000 sims improve r from 0.95 (I-Ti) toward ~0.98?
+
+- [ ] **Train K model** (InfluenceField HighRes 300-sim, resolution-scaling ablation):
+  ```bash
+  python backfill_physics_files.py --dataset LargeScaleRun1/Dataset_HighRes_Ti_Steel_300
+  ```
+  Then add K entry to `retrain_influence_models.py`.  Tests whether 101×101 output improves
+  uz r (currently 0.70 on 51×51).
+
+- [ ] **MT retrain with phased warmup** — see HOLE 3 in the prior session notes.
+  Expected: MT ux r 0.31 → ~0.37+, retains cupping r=0.82.
+
+- [ ] **Cross-material eval update** — re-run `python run_eval.py --run LargeScaleRun1`
+  (without `--no-cross`) after any J/K/MT changes to update cross-material rows in CSV.
+
+---
+
 ## SESSION NOTES — last updated 2026-06-06 (influence field pressure test)
 
 ### What was done this session
@@ -230,7 +357,7 @@ if len(sim_folders) < 7:
 - [ ] Development history shows **iterative commits** over months — not a single burst
 - [ ] **Zenodo DOI** created: archive a tagged release at [zenodo.org](https://zenodo.org) and link the DOI badge in README
 - [ ] **Tagged release** exists (`git tag v0.1.0` or similar) with changelog/release notes
-- [ ] `CONTRIBUTING.md` file added — must describe how to contribute, file issues, and seek support
+- [x] `CONTRIBUTING.md` file added — created 2026-06-06
 - [ ] Issue tracker is publicly accessible and allows external users to open issues
 - [ ] `LICENSE` file is a **plain-text OSI-approved license file** in the repo root (MIT already exists — confirm it is not just mentioned in README)
 - [ ] Evidence of **community engagement**: external issues, PRs, citations, or adoptions
@@ -239,10 +366,11 @@ if len(sim_folders) < 7:
 
 ## 1. Paper File Requirements
 
-- [ ] Create `paper.md` at the repo root (JOSS submission file)
-- [ ] Create `paper.bib` (BibTeX bibliography)
-- [ ] Add all figure files to repo alongside source code
+- [x] Create `paper.md` at the repo root — done, with all required sections
+- [x] Create `paper.bib` (BibTeX bibliography) — 11 citations, all keys verified
+- [x] Add all figure files to repo alongside source code — `images/` committed 2026-06-06
 - [ ] Paper length: **750–1750 words** (excluding references and figures)
+  - Run `pandoc paper.md --to plain | wc -w` to check — do this next session
   - Papers over 1750 words will be asked to cut down
   - Target ~1000–1400 words for comfortable fit
 

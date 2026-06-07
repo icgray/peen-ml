@@ -202,19 +202,20 @@ this gap at the cost of a larger input space.
 
 These results are obtained on a controlled 500-simulation benchmark with a narrow parameter range (velocity 25–55 m/s, diameter 0.4–0.9 mm). Training on larger datasets spanning the full parameter range (10–80 m/s, 0.1–1.5 mm, 200 simulations per material pair) reveals a strong dependence on input representation. The shot-density checkerboard architecture achieves node-level Pearson $r = 0.33$–$0.59$ for in-plane displacements across five material pairs; the InfluenceField ConvDecoder—which uses four physics-derived spatial maps (Hertz contact depth, shot KDE, lateral forces $F_x$, $F_y$) computed directly from simulation parameters—achieves $r = 0.95$–$0.97$ for in-plane displacements and $r = 0.67$–$0.71$ for out-of-plane displacement, with relative RMSE of 8–11\% of the peak ground-truth value. These large-scale results are summarised in \autoref{tab:largescale}.
 
-| Architecture | Input | ux $r$ | ux rel RMSE | uz $r$ | uz rel RMSE | RMSE ux |
+| Architecture | Input | Mesh | ux $r$ | ux rel RMSE | uz $r$ | RMSE ux |
 |---|---|---|---|---|---|---|
-| ImprovedDispl. (Ti+steel) | Checkerboard | 0.37 | 40% | 0.13 | 24% | 13.9 µm |
-| ImprovedDispl. (316L+ceramic) | Checkerboard | 0.59 | 77% | 0.08 | 28% | 52.5 µm |
-| ImprovedDispl. (Al+glass) | Checkerboard | 0.37 | 34% | 0.16 | 25% | 7.5 µm |
-| MatCond Improved (25 combos) | Checkerboard | 0.67 | 21% | 0.27 | 23% | 14.7 µm |
-| **I-Ti+steel** | **Physics maps** | **0.95** | **11%** | **0.70** | **15%** | **3.7 µm** |
-| **I-316L+ceramic** | **Physics maps** | **0.97** | **8%** | **0.67** | **15%** | **12.4 µm** |
-| **I-Al+glass** | **Physics maps** | **0.95** | **11%** | **0.67** | **17%** | **2.3 µm** |
-| **I-Inconel+tungsten** | **Physics maps** | **0.96** | **9%** | **0.71** | **14%** | **5.9 µm** |
-| **I-4340+cast iron** | **Physics maps** | **0.97** | **8%** | **0.68** | **15%** | **8.6 µm** |
+| ImprovedDispl. (Ti+steel) | Checkerboard | 51×51 | 0.37 | 40% | 0.13 | 13.9 µm |
+| ImprovedDispl. (316L+ceramic) | Checkerboard | 51×51 | 0.59 | 77% | 0.08 | 52.5 µm |
+| ImprovedDispl. (Al+glass) | Checkerboard | 51×51 | 0.37 | 34% | 0.16 | 7.5 µm |
+| MatCond (25 combos, mat+shot cond.) | Checkerboard | 51×51 | 0.67 | 21% | 0.27 | 14.7 µm |
+| ConvDecoder HighRes (Ti+steel) | Checkerboard | 101×101 | 0.30 | 30% | 0.04 | 13.4 µm |
+| **I-Ti+steel** | **Physics maps** | **51×51** | **0.95** | **11%** | **0.70** | **3.7 µm** |
+| **I-316L+ceramic** | **Physics maps** | **51×51** | **0.97** | **8%** | **0.67** | **12.4 µm** |
+| **I-Al+glass** | **Physics maps** | **51×51** | **0.95** | **11%** | **0.67** | **2.3 µm** |
+| **I-Inconel+tungsten** | **Physics maps** | **51×51** | **0.96** | **9%** | **0.71** | **5.9 µm** |
+| **I-4340+cast iron** | **Physics maps** | **51×51** | **0.97** | **8%** | **0.68** | **8.6 µm** |
 
-: Large-scale results (200 simulations per material pair, 50×50-node mesh, V = 10–80 m/s, D = 0.1–1.5 mm). MatCond row uses a single model trained on all 25 material combinations (5000 sims total) with 10-dimensional material+shot conditioning. $r$ = Pearson correlation (pattern fidelity). rel RMSE = RMSE / peak\_gt $\times$ 100\% (scale accuracy, nodes with $|u| > 5\%$ of maximum). \label{tab:largescale}
+: Large-scale results. "200 sims" rows use 200 simulations per material pair; MatCond uses 5000 total across 25 combinations. Parameter range: V = 10–80 m/s, D = 0.1–1.5 mm. ConvDecoder HighRes uses a 101×101 output grid (300 Ti+steel sims); all others use a 51×51 grid. $r$ = Pearson correlation (pattern fidelity, scale-invariant). rel RMSE = RMSE / peak\_gt $\times$ 100\% (scale accuracy, nodes with $|u| > 5\%$ of maximum). Physics maps = four per-simulation fields (Hertz depth, KDE, $F_x$, $F_y$). \label{tab:largescale}
 
 # Limitations
 

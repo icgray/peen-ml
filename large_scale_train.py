@@ -533,10 +533,12 @@ def train_conv_decoder(
                     pred = model(cb.to(device))
                 all_pred.append(pred.cpu().numpy())
                 all_true.append(field.numpy())
-        pred_np = np.concatenate(all_pred)  # (N, 3, H, W)
+        pred_np = np.concatenate(all_pred)  # (N, 3, H, W) in per-sim-normalized units [0,1]
         true_np = np.concatenate(all_true)
-        mse  = float(np.mean((pred_np - true_np) ** 2))
-        rmse = float(np.sqrt(mse)) * 1e6
+        mse  = float(np.mean((pred_np - true_np) ** 2))  # normalized MSE (unitless)
+        # Convert to approximate µm using median per-sim scale for reporting only.
+        # The precise per-node RMSE is computed by evaluate_on_dataset at eval time.
+        rmse = float(np.sqrt(mse)) * _cd_disp_scale * 1e6
 
         save_path = os.path.join(model_save_dir,
                                  "trained_conv_decoder_full_model.pth")
