@@ -52,7 +52,7 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"\n{'='*60}")
-    print(f"  MT_MultiTask_Ti_Steel  (phased warmup, warmup=20 epochs)")
+    print("  MT_MultiTask_Ti_Steel  (phased warmup, warmup=20 epochs)")
     print(f"  dataset : {dataset_dir}")
     print(f"  save to : {model_dir}")
     print(f"  device  : {device}  epochs={args.epochs}")
