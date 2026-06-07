@@ -918,6 +918,9 @@ def train_model_multitask(
         active_λ_c = 0.0 if epoch < warmup_disp_epochs else λ_c
         if epoch == warmup_disp_epochs and warmup_disp_epochs > 0:
             print(f"  [MultiTask] Warmup complete at epoch {epoch+1} — enabling stress+scalar heads")
+            # Reset patience so the combined loss gets a fresh patience window.
+            best_val = float("inf")
+            patience_ctr = 0
 
         # ---- Training ----
         model.train()
