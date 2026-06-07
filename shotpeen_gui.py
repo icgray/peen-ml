@@ -496,6 +496,9 @@ class App:
 
     def analytical_dialog(self):
         """Open the Analytical Compare dialog (Shen-Atluri vs Sherafatnia)."""
+        import queue as _queue
+        import threading as _threading
+
         import analytical_mode as _am  # lazy import to avoid circular imports at startup
         import tempfile
         from tkinter import scrolledtext
@@ -693,77 +696,99 @@ class App:
             sequential = sequential_var.get()
             mode = mode_var.get()
 
+            # Queue-based output: background thread puts text chunks, main thread reads them.
+            out_q = _queue.Queue()
+            done_flag = _threading.Event()
+            fig_path_holder = [None]  # mutable container so _run can set it
+
+            class _QStream:
+                """Stdout-compatible stream that forwards text to the GUI queue."""
+
+                def write(self, text):
+                    out_q.put(("text", text))
+
+                def flush(self):
+                    pass
+
+            def _poll():
+                """Drain the output queue and append to metrics_box on the main thread."""
+                while True:
+                    try:
+                        kind, payload = out_q.get_nowait()
+                        if kind == "text":
+                            metrics_box.config(state="normal")
+                            metrics_box.insert(tk.END, payload)
+                            metrics_box.config(state="disabled")
+                            metrics_box.see(tk.END)
+                        elif kind == "image":
+                            _show_image(payload)
+                    except _queue.Empty:
+                        break
+                if not done_flag.is_set():
+                    dialog.after(80, _poll)
+
             def _run():
+                old_stdout = None
                 try:
+                    old_stdout = __import__("sys").stdout
+                    __import__("sys").stdout = _QStream()
+
                     if mode == "single":
                         sim_idx = int(sim_idx_var.get())
                         sim_dir = os.path.join(dataset_dir, f"Simulation_{sim_idx}")
                         if not os.path.isdir(sim_dir):
-                            dialog.after(
-                                0,
-                                lambda: messagebox.showerror(
-                                    "Not found",
-                                    f"Simulation_{sim_idx} not found in {dataset_dir}",
-                                    parent=dialog,
-                                ),
-                            )
+                            out_q.put(("text", f"ERROR: Simulation_{sim_idx} not found.\n"))
                             return
 
                         tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
                         fig_path = tmp.name
                         tmp.close()
+                        fig_path_holder[0] = fig_path
 
-                        import io
+                        results = _am.compare_to_dataset(sim_dir, out_path=fig_path, sequential=sequential)
 
-                        buf = io.StringIO()
-                        with _am._redirect_stdout(buf):
-                            results = _am.compare_to_dataset(sim_dir, out_path=fig_path, sequential=sequential)
-
-                        # Build metrics text (structured table + any captured print output)
-                        lines = ["Per-simulation detail:", buf.getvalue().strip(), ""]
-                        lines += [f"{'Model':<14s}  {'comp':>4s}  {'r':>7s}  {'RMSE um':>8s}  {'n nodes':>8s}"]
-                        lines.append("-" * 52)
+                        # Append structured metrics table after the captured output
+                        lines = [
+                            "",
+                            f"{'Model':<14s}  {'comp':>4s}  {'r':>7s}  {'RMSE um':>8s}  {'n nodes':>8s}",
+                            "-" * 52,
+                        ]
                         for model in ("shen_atluri", "sherafatnia"):
                             for comp in ("ux", "uy", "uz"):
                                 m = results[model][comp]
-                                r_s = f"{m['r']:>+7.4f}" if not (m["r"] != m["r"]) else "     nan"
-                                rmse_s = f"{m['rmse_um']:>8.2f}" if not (m["rmse_um"] != m["rmse_um"]) else "     nan"
+                                r_s = f"{m['r']:>+7.4f}" if m["r"] == m["r"] else "     nan"
+                                rmse_s = f"{m['rmse_um']:>8.2f}" if m["rmse_um"] == m["rmse_um"] else "     nan"
                                 lines.append(f"  {model:<14s}  {comp:>4s}  {r_s}  {rmse_s}  {m['n']:>8d}")
-                        metrics_text = "\n".join(lines)
-
-                        dialog.after(0, lambda: _write_metrics(metrics_text))
-                        dialog.after(0, lambda: _show_image(fig_path))
+                        out_q.put(("text", "\n".join(lines) + "\n"))
+                        out_q.put(("image", fig_path))
 
                     else:
-                        import io
-
                         n_sims = int(batch_n_var.get())
                         tmp_csv = tempfile.NamedTemporaryFile(suffix=".csv", delete=False)
                         tmp_csv_path = tmp_csv.name
                         tmp_csv.close()
-
-                        # Capture ALL output (per-sim lines + summary) into GUI
-                        buf = io.StringIO()
-                        with _am._redirect_stdout(buf):
-                            _am.compare_dataset(
-                                dataset_dir,
-                                n_sims=n_sims,
-                                sequential=sequential,
-                                out_csv=tmp_csv_path,
-                                verbose=True,
-                            )
-
-                        metrics_text = buf.getvalue()
-                        dialog.after(0, lambda: _write_metrics(metrics_text))
+                        _am.compare_dataset(
+                            dataset_dir,
+                            n_sims=n_sims,
+                            sequential=sequential,
+                            out_csv=tmp_csv_path,
+                            verbose=True,
+                        )
 
                     dialog.after(0, lambda: progress_lbl.config(text="Done", fg=OK_COLOR))
                 except Exception as exc:  # pylint: disable=broad-except
                     err_msg = str(exc)
+                    out_q.put(("text", f"\nERROR: {err_msg}\n"))
                     dialog.after(0, lambda: progress_lbl.config(text=f"Error: {err_msg[:60]}", fg=ERR_COLOR))
                 finally:
+                    if old_stdout is not None:
+                        __import__("sys").stdout = old_stdout
+                    done_flag.set()
+                    dialog.after(0, _poll)  # final drain after thread finishes
                     dialog.after(0, lambda: run_btn.config(state="normal", text="Run Analysis"))
 
-            threading.Thread(target=_run, daemon=True).start()
+            dialog.after(80, _poll)
+            _threading.Thread(target=_run, daemon=True).start()
 
         run_btn.config(command=_do_run)
 
