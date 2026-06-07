@@ -65,8 +65,6 @@ architectures—described in the Software Design section—perform inference on 
 under one second. Third, a GUI makes the full generate–train–evaluate workflow accessible to
 process engineers and students who are not Python or machine learning specialists.
 
-The target users are process engineers iterating on shot peening recipes, manufacturing researchers
-studying coverage effects across material classes, and students learning applied surrogate modeling.
 
 # State of the Field
 
@@ -109,15 +107,11 @@ approximately 2 seconds on a laptop CPU, compared to hours for equivalent FEA an
 
 `materials.py` provides a curated dictionary of five aerospace workpiece alloys
 (Ti-6Al-4V, 316L stainless steel, 4340 steel, Al-7075-T6, Inconel-718) and five shot media
-(steel, ceramic, glass, cast iron, tungsten), with sourced mechanical properties (Young's
-modulus, Poisson's ratio, yield strength, bilinear hardening modulus, density). During
-training, properties are extracted as a 10-dimensional normalised conditioning vector: seven
-material properties (Young's modulus, Poisson's ratio, yield strength, hardening modulus, shot
-modulus, shot Poisson's ratio, shot density) plus three shot-process scalars (impact velocity V,
-shot diameter D, number of shots n)—all log-scaled for large-range quantities—and concatenated
-to encoder outputs, enabling a single trained model to generalise across all 25 material
-combinations while retaining amplitude information that would otherwise be lost by per-simulation
-input normalisation.
+(steel, ceramic, glass, cast iron, tungsten), with sourced mechanical properties. A
+10-dimensional normalised conditioning vector (seven material property scalars plus impact
+velocity V, shot diameter D, and shot count n, all log-scaled) is concatenated to encoder
+outputs, enabling a single trained model to generalise across all 25 material combinations
+while retaining amplitude information.
 
 ## Three CNN Architectures
 
@@ -128,30 +122,23 @@ spatial attention modules [@cbam2018]. They differ in how they decode to displac
 output directly to N×3 nodal displacements. It is simple to train but requires retraining for
 each mesh size and reaches approximately 30 million parameters at a 50×50 mesh.
 
-**ConvDecoderPredictor** (recommended) replaces the FC decoder with a lightweight
-convolutional decoder that produces a full (3, H, W) spatial displacement field, then samples
-it at arbitrary node coordinates via bilinear interpolation using `torch.nn.functional.grid_sample`.
-This architecture has approximately 170 thousand parameters—178 times fewer than
-DisplacementPredictor—and generalises to evaluation meshes of any resolution without retraining.
-Material conditioning is applied via a Feature-wise Linear Modulation (FiLM) bias
-[@film2018] added to the encoder feature map. All encoder and decoder convolutional layers use
-reflect padding to enforce zero-flux boundary conditions consistent with the free surface of the
-plate, reducing corner-region bias compared to zero padding.
+**ConvDecoderPredictor** (recommended) uses a lightweight convolutional decoder to produce
+a full (3, H, W) displacement field, then samples it at arbitrary node coordinates via bilinear
+interpolation. At ~170 K parameters—178× fewer than DisplacementPredictor—it generalises to any
+evaluation mesh resolution without retraining. Material conditioning is applied via Feature-wise
+Linear Modulation (FiLM) [@film2018], and reflect padding enforces zero-flux boundary conditions
+at plate edges.
 
-**SIRENPredictor** encodes the checkerboard input to a latent vector that conditions
-a Sinusoidal Representation Network (SIREN) decoder [@sitzmann2020siren], queried at explicit
-node (x, y) coordinates. During training, 512 nodes are randomly subsampled per forward pass,
-so GPU memory scales as O(batch × 512) regardless of total mesh size—enabling training on
-meshes with millions of nodes. This architecture uses approximately 2 million parameters.
+**SIRENPredictor** [@sitzmann2020siren] conditions a sinusoidal decoder on a latent vector,
+queried at explicit (x, y) coordinates. Subsampling 512 nodes per forward pass makes GPU memory
+independent of total mesh size, enabling training on million-node industrial meshes (~2 M parameters).
 
 ## Three-Layer Mesh Interpolation
 
-When the evaluation mesh differs from the training mesh, three sequential operations reconcile
-the resolution mismatch: (1) bilinear resize of the checkerboard input to the trained grid
-size; (2) thin-plate-spline radial basis function (TPS-RBF) interpolation from training node
-coordinates to evaluation node coordinates (FC model), or exact bilinear field sampling from
-the predicted field (convolutional decoder); (3) Rodrigues rotation of flat-plate displacement
-vectors into the local surface normal frame of each STL vertex.
+Mismatched evaluation meshes are handled by three sequential operations: (1) bilinear resize
+of the checkerboard input; (2) TPS-RBF interpolation (FC model) or bilinear field sampling
+(convolutional decoder) from training to evaluation coordinates; (3) Rodrigues rotation of
+displacement vectors into the local surface normal frame of each STL vertex.
 
 ## Curved Surface and Nozzle Trajectory
 
@@ -173,34 +160,35 @@ loss streamed to a log panel.
 
 # Accuracy and Performance
 
-\autoref{fig:pred} illustrates the behaviour of the ConvDecoderPredictor on a held-out
-test simulation from a benchmark dataset of 500 simulations (350 train / 75 validation /
-75 test) generated by the built-in physics simulator. Each simulation fires 300–1000
-steel shots at randomised positions on a Ti-6Al-4V plate (30×30 element mesh,
-961 nodes, 10×10 shot-density checkerboard, velocity 25–55 m/s,
-shot diameter 0.4–0.9 mm). Inference on a single checkerboard runs in under one second
-on a laptop CPU, compared to approximately 1.4 seconds per simulation for the physics
-simulator running on 4 CPU cores—and orders of magnitude faster than equivalent FEA.
+\autoref{fig:pred} shows the ConvDecoderPredictor on a held-out test simulation from a
+500-simulation benchmark (350 train / 75 val / 75 test; Ti-6Al-4V plate, 961 nodes,
+10×10 shot-density checkerboard, V = 25–55 m/s, D = 0.4–0.9 mm, 300–1000 shots).
+CNN inference runs in under one second on a laptop CPU, versus 1.4 s for the physics
+simulator on 4 CPU cores—and orders of magnitude faster than FEA.
 
-![The ConvDecoderPredictor applied to a median-accuracy held-out test simulation. Left: 10×10 shot-density checkerboard input. Centre-left: ground-truth out-of-plane displacement $u_z$ at the 31×31 node level, showing individual shot craters. Centre-right: CNN prediction at the same resolution—the model captures the macro spatial trend but not sub-cell shot positions, which are unresolvable from the density representation. Right two panels: ground truth and prediction averaged to the 10×10 checkerboard cell level; the test-set median cell-averaged pattern correlation is $r = 0.852$ (RMSE = 34 µm). A median-accuracy simulation is shown rather than the best-case result to give an honest representation of typical model behaviour.\label{fig:pred}](images/pred_vs_gt.png){ width=100% }
+![The ConvDecoderPredictor applied to a median-accuracy held-out test simulation (Simulation\_427). Left: 10×10 shot-density checkerboard input. Centre-left: ground-truth out-of-plane displacement $u_z$ at the 31×31 node level. Centre-right: CNN prediction—the model captures the macro spatial trend but not sub-cell shot positions, which are unresolvable from the density representation. Right two panels: ground truth and prediction averaged to the 10×10 checkerboard cell level; the median cell-averaged pattern correlation across 75 test simulations is $r = 0.28$ (RMSE = 13 µm). A median-accuracy simulation is shown rather than a best-case result.\label{fig:pred}](images/pred_vs_gt.png){ width=100% }
 
-The cell-averaged comparison (rightmost two panels of \autoref{fig:pred}) reveals that the
-model correctly learns which regions of the plate receive the most deformation given the
-shot density pattern. Node-level accuracy is lower ($r = 0.617$, RMSE = 61 µm) because
-individual shot crater positions within each density cell are not recoverable from the
-checkerboard alone—a fundamental limit of the density representation, not of the CNN
-architecture. Higher-resolution checkerboards or explicit shot-position inputs would reduce
-this gap at the cost of a larger input space.
+The cell-averaged comparison (rightmost two panels of \autoref{fig:pred}) shows that the
+model correctly identifies which plate regions receive the most deformation. Node-level
+accuracy is lower ($r = 0.19$, RMSE = 26 µm, rel RMSE = 17%) because individual shot
+crater positions within each density cell are not recoverable from the checkerboard
+alone—a fundamental limit of the density representation. Higher-resolution checkerboards
+or explicit shot-position inputs would reduce this gap.
 
 | Architecture | Parameters | Inference | Cell-avg $r$ | Node rel RMSE |
 |---|---|---|---|---|
-| ConvDecoderPredictor | ~170 K | <1 s | 0.852 | 6% |
+| ConvDecoderPredictor | ~170 K | <1 s | 0.28 | 18% |
 | DisplacementPredictor (FC) | ~30 M | <1 s | — | — |
 | SIRENPredictor | ~2 M | <1 s | — | — |
 
 : Benchmark results for the ConvDecoderPredictor on 75 held-out test simulations (Ti-6Al-4V workpiece, steel shot, 300–1000 shots/sim, 30×30 mesh, 10×10 checkerboard). Cell-avg $r$ measures spatial pattern correlation (scale-invariant). Node rel RMSE = RMSE / peak\_gt × 100% measures scale accuracy on nodes with |u_z| > 5% of the field maximum. FC and SIREN rows require retraining on the same dataset. Inference measured on an NVIDIA RTX 4090 Laptop GPU. \label{tab:results}
 
-These results are obtained on a controlled 500-simulation benchmark with a narrow parameter range (velocity 25–55 m/s, diameter 0.4–0.9 mm). Training on larger datasets spanning the full parameter range (10–80 m/s, 0.1–1.5 mm, 200 simulations per material pair) reveals a strong dependence on input representation. The shot-density checkerboard architecture achieves node-level Pearson $r = 0.33$–$0.59$ for in-plane displacements across five material pairs; the InfluenceField ConvDecoder—which uses four physics-derived spatial maps (Hertz contact depth, shot KDE, lateral forces $F_x$, $F_y$) computed directly from simulation parameters—achieves $r = 0.95$–$0.97$ for in-plane displacements and $r = 0.67$–$0.71$ for out-of-plane displacement, with relative RMSE of 8–11\% of the peak ground-truth value. These large-scale results are summarised in \autoref{tab:largescale}.
+Training on larger datasets spanning the full parameter range (V = 10–80 m/s, 200 sims per
+material pair) reveals a strong dependence on input representation. The checkerboard
+architecture achieves in-plane $r = 0.33$–$0.59$ across five material pairs; the
+InfluenceField ConvDecoder—using four physics-derived spatial maps (Hertz depth, shot KDE,
+lateral forces $F_x$, $F_y$)—achieves $r = 0.95$–$0.97$ in-plane and $r = 0.67$–$0.71$
+out-of-plane, with 8–11\% relative RMSE. See \autoref{tab:largescale}.
 
 | Architecture | Input | Mesh | ux $r$ | ux rel RMSE | uz $r$ | RMSE ux |
 |---|---|---|---|---|---|---|
@@ -219,30 +207,22 @@ These results are obtained on a controlled 500-simulation benchmark with a narro
 
 # Limitations
 
-The shot-density checkerboard input encodes spatial coverage patterns but normalises each
-channel independently per simulation, which can reduce the model's ability to distinguish
-predictions at different absolute impact velocities. Users training on datasets with wide
-velocity ranges (e.g., 10–80 m/s) should enable the velocity, diameter, and shot-count
-conditioning scalars (V, D, n) included in the 10-dimensional conditioning vector to restore
-this amplitude information. Cross-material deployment—applying a model trained on one
-material combination to a different one—transfers spatial patterns well (Pearson $r = 0.74$–0.89)
-but may produce incorrect absolute displacements unless material-specific rescaling is applied;
-the package reports both pattern correlation and relative RMSE (normalised by peak ground-truth
-displacement) to make this distinction explicit.
+Per-simulation normalization of checkerboard channels can reduce the model's ability to
+distinguish different impact velocities; users training on wide velocity ranges (e.g., 10–80 m/s)
+should enable the V, D, n conditioning scalars in the 10-dimensional conditioning vector.
+Cross-material deployment transfers spatial patterns well (Pearson $r = 0.74$–$0.89$) but may
+produce incorrect absolute displacements without material-specific rescaling; the package reports
+both pattern correlation and relative RMSE to make this distinction explicit.
 
 # Research Impact Statement
 
 `peen-ml` lowers the computational and licensing barriers to shot peening process simulation,
 enabling rapid parameter exploration on commodity hardware without commercial FEA software.
-The ConvDecoderPredictor's 178-fold parameter reduction relative to the FC baseline makes
-it practical to train and deploy on a standard laptop, while the SIREN variant extends
-applicability to industrial mesh sizes beyond the reach of dense FC layers.
-
-The software was developed at the University of Washington and is being made available as an
-open-source resource for the manufacturing research and education communities. Its combination
-of a physics-grounded simulator, material-aware CNN training, and a beginner-friendly GUI is
-intended to support reproducible shot peening research and to serve as an accessible teaching
-tool for surrogate modeling applied to manufacturing problems.
+The 178-fold parameter reduction of ConvDecoderPredictor makes it practical to train and
+deploy on a standard laptop, while the SIREN variant supports industrial mesh sizes.
+The combination of a physics-grounded simulator, material-aware CNN training, and a
+beginner-friendly GUI supports reproducible shot peening research and serves as a teaching
+tool for surrogate modeling in manufacturing courses.
 
 # AI Usage Disclosure
 
