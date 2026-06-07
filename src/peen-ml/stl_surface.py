@@ -21,7 +21,7 @@ Dependency: trimesh (pip install trimesh)
 from __future__ import annotations
 
 import os
-from typing import Optional, Tuple
+from typing import Tuple
 
 import numpy as np
 from scipy.spatial import KDTree

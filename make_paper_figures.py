@@ -5,7 +5,8 @@ Generate all remaining paper figures:
   images/stl_deformation.png - STL plot cropped of window chrome
 """
 
-import os, sys
+import os
+import sys
 import numpy as np
 import matplotlib
 
@@ -187,7 +188,7 @@ def make_stl_clean():
     out = os.path.join(ROOT, "images", "stl_deformation.png")
 
     if not os.path.exists(src):
-        print(f"STL_Deformation.png not found, skipping")
+        print("STL_Deformation.png not found, skipping")
         return
 
     im = Image.open(src).convert("RGB")

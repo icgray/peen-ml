@@ -24,7 +24,7 @@ import csv
 import os
 import sys
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
@@ -404,7 +404,7 @@ def print_summary(rows: list) -> None:
             )
 
     if fail:
-        print(f"\n  Failed configs:")
+        print("\n  Failed configs:")
         for r in fail:
             print(f"    {r['label']}: {r.get('error', 'unknown')}")
 
@@ -514,7 +514,7 @@ def main() -> None:
             return
 
     print("=" * 70)
-    print(f"peen-ml Stress-Test Benchmark")
+    print("peen-ml Stress-Test Benchmark")
     print(f"  Configs  : {len(configs)}")
     print(f"  Sims/cfg : {args.n_sims}")
     print(f"  Epochs   : {args.epochs}  (patience={args.patience})")

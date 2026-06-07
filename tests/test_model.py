@@ -12,7 +12,6 @@ Covers:
   - load_and_evaluate_model_gui: end-to-end load + infer
 """
 
-import inspect
 import os
 
 import numpy as np
@@ -20,7 +19,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-import sys, os
+import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 from helpers import SYN_G, SYN_NODES, SYN_SIMS, SAMPLE_DATASET, make_node_coords as _make_node_coords

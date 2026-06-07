@@ -29,8 +29,7 @@ import os
 import shutil
 import sys
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -50,7 +49,7 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
 import model as M  # noqa: E402
-from native_dataset_gen import GeneratorParams, generate_single_simulation, generate_dataset
+from native_dataset_gen import GeneratorParams, generate_single_simulation
 from materials import WORKPIECE_MATERIALS, SHOT_MATERIALS
 
 
@@ -103,7 +102,7 @@ def build_dataset_specs(
         ("4340-Steel", "cast_iron", "High-strength steel + cast iron shot"),
     ]
     for wp, sp, desc in key_combos:
-        tag = f"{wp.replace('-','_')}__{sp}"
+        tag = f"{wp.replace('-', '_')}__{sp}"
         specs["per_material"].append(
             DatasetSpec(
                 name=f"Dataset_{tag}_{n_sims_standard}",
@@ -118,7 +117,7 @@ def build_dataset_specs(
     # ---- All 25 material combos (for multi-material model) ----
     for wp in sorted(WORKPIECE_MATERIALS):
         for sp in sorted(SHOT_MATERIALS):
-            tag = f"{wp.replace('-','_')}__{sp}"
+            tag = f"{wp.replace('-', '_')}__{sp}"
             specs["multi_material"].append(
                 DatasetSpec(
                     name=f"MultiMat/{tag}_{n_sims_standard}",
@@ -863,14 +862,14 @@ def print_summary(rows: List[Dict]) -> None:
             print(f"\n  {r['model_name']}")
             print(f"    arch={r['arch']}  dataset={r['dataset']}")
             print(
-                f"    RMSE={r.get('rmse_um','?')} µm  "
-                f"epochs={r.get('epochs_trained','?')}  "
-                f"time={r.get('train_s','?')}s"
+                f"    RMSE={r.get('rmse_um', '?')} µm  "
+                f"epochs={r.get('epochs_trained', '?')}  "
+                f"time={r.get('train_s', '?')}s"
             )
     if fail:
-        print(f"\n  Failed models:")
+        print("\n  Failed models:")
         for r in fail:
-            print(f"    {r['model_name']}: {r.get('error','?')}")
+            print(f"    {r['model_name']}: {r.get('error', '?')}")
     print("=" * 72)
 
 
@@ -1085,7 +1084,7 @@ def main() -> None:
     if (args.phase in ("all", "generate")) and not args.no_multimat:
         print("\n--- Phase 1b: Merging multi-material datasets ---")
         multimat_source_dirs = [
-            os.path.join(output_root, f"MultiMat/{wp.replace('-','_')}__{sp}_{args.n_sims}")
+            os.path.join(output_root, f"MultiMat/{wp.replace('-', '_')}__{sp}_{args.n_sims}")
             for wp in sorted(WORKPIECE_MATERIALS)
             for sp in sorted(SHOT_MATERIALS)
         ]
@@ -1235,7 +1234,7 @@ def main() -> None:
             ("4340-Steel", "cast_iron"),
         ]
         for wp, sp in key_combos:
-            tag = f"{wp.replace('-','_')}__{sp}"
+            tag = f"{wp.replace('-', '_')}__{sp}"
             ds_dir = os.path.join(output_root, f"Dataset_{tag}_{args.n_sims}")
             run_training(
                 model_name=f"D_Improved_{tag}",
@@ -1365,7 +1364,7 @@ def main() -> None:
             if res.get("success"):
                 print(f"    [OK] RMSE={res['rmse_um']:.2f}  epochs={res['epochs_trained']}")
             else:
-                print(f"    [FAIL] {res.get('error','unknown')}")
+                print(f"    [FAIL] {res.get('error', 'unknown')}")
             report_rows.append(
                 {
                     "model_name": model_name,
@@ -1385,7 +1384,7 @@ def main() -> None:
 
         # I variants: 5 key material combos (200-sim each)
         for wp, sp in key_combos:
-            tag = f"{wp.replace('-','_')}__{sp}"
+            tag = f"{wp.replace('-', '_')}__{sp}"
             ds_dir = os.path.join(output_root, f"Dataset_{tag}_{args.n_sims}")
             _run_influence(f"I_InfluenceField_{tag}", ds_dir, args.n_sims, 50, 50)
 

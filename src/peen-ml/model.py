@@ -3661,12 +3661,9 @@ def train_influence_field_model(
 
     Returns dict with mse, rmse_um, epochs_trained, disp_scale, success.
     """
-    import time
     from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    t0 = time.perf_counter()
-
     try:
         train_loader, val_loader, test_loader, grid_H, grid_W, disp_scale, _per_sim_scales = (
             create_influence_field_loaders(dataset_dir, batch_size=batch_size)

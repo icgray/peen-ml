@@ -45,7 +45,7 @@ def _write_flat_stl(path, Lx=0.04, Ly=0.04):
 @pytest.fixture(scope="module")
 def flat_stl_path():
     try:
-        import trimesh  # noqa: F401
+        import trimesh  # noqa: F401  # pylint: disable=unused-import
     except ImportError:
         pytest.skip("trimesh not installed")
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -134,12 +134,12 @@ class TestCheckerboard:
 
 class TestNodeElementArrays:
     def test_node_labels_1indexed(self, flat_surface):
-        coords, labels = flat_surface.to_node_arrays()
+        _, labels = flat_surface.to_node_arrays()
         assert labels.min() == 1
         assert labels.max() == flat_surface.n_vertices
 
     def test_element_labels_1indexed(self, flat_surface):
-        conn, elems = flat_surface.to_element_arrays()
+        _, elems = flat_surface.to_element_arrays()
         assert elems.min() == 1
         assert elems.max() == flat_surface.n_faces
 

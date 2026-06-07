@@ -25,8 +25,7 @@ import math
 import os
 import sys
 import tempfile
-from typing import Dict
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -42,7 +41,7 @@ if _SRC not in sys.path:
 # Check taichi availability
 # ---------------------------------------------------------------------------
 try:
-    import taichi as ti  # noqa: F401
+    import taichi as ti  # noqa: F401  # pylint: disable=unused-import
 
     _TAICHI_OK = True
 except ImportError:
@@ -660,7 +659,7 @@ class TestVonMisesReturnMapping:
         mu, sy0, H = self._params()
         # Very high deviatoric stress → must yield
         tau_p = np.array([1000e6, -500e6, -500e6])
-        tc, Jp = self._return_map(tau_p, 0.0, mu, sy0, H)
+        tc, _ = self._return_map(tau_p, 0.0, mu, sy0, H)
         norm_trial = np.linalg.norm(tau_p - tau_p.mean())
         norm_corr = np.linalg.norm(tc - tc.mean())
         assert norm_corr < norm_trial

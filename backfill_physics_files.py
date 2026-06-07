@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import argparse
 import math
-import os
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -284,7 +283,7 @@ def backfill_dataset(dataset_dir: str, workers: int = 4, force: bool = False):
                 n_ok += 1
             else:
                 n_fail += 1
-                print(f"  FAIL {r['sim']}: {r.get('error','?')}")
+                print(f"  FAIL {r['sim']}: {r.get('error', '?')}")
             if i % max(1, len(to_process) // 10) == 0:
                 print(f"  {i}/{len(to_process)}  ok={n_ok}  fail={n_fail}  " f"({time.perf_counter()-t0:.0f}s)")
     else:
@@ -296,7 +295,7 @@ def backfill_dataset(dataset_dir: str, workers: int = 4, force: bool = False):
                     n_ok += 1
                 else:
                     n_fail += 1
-                    print(f"  FAIL {r['sim']}: {r.get('error','?')}")
+                    print(f"  FAIL {r['sim']}: {r.get('error', '?')}")
                 if i % max(1, len(to_process) // 10) == 0:
                     print(f"  {i}/{len(to_process)}  ok={n_ok}  fail={n_fail}  " f"({time.perf_counter()-t0:.0f}s)")
 

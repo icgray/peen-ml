@@ -8,7 +8,9 @@ This script normalises targets to [-1, 1] before training and rescales
 predictions back to physical units for the figure.
 """
 
-import os, sys, time
+import os
+import sys
+import time
 import numpy as np
 import matplotlib
 
@@ -66,7 +68,7 @@ def train():
         print("Trained model already exists, skipping.")
         return
 
-    from model import ConvDecoderPredictor, FieldDataset, infer_grid_shape, infer_dataset_shape
+    from model import ConvDecoderPredictor, FieldDataset, infer_grid_shape
 
     print("Loading data ...")
     sims = sorted(
@@ -216,7 +218,7 @@ def evaluate_and_plot():
     mean_rel_rmse = float(np.mean(all_rel_rmse)) if all_rel_rmse else float("nan")
     print(f"\nTest set ({len(test_sims)} sims) — affected nodes only:")
     print(f"  RMSE = {mean_rmse:.2f} um   rel RMSE = {mean_rel_rmse:.1f}%   Pearson r = {mean_r:.3f}")
-    print(f"  note: r = pattern correlation; rel RMSE = RMSE / peak_gt (scale accuracy)")
+    print("  note: r = pattern correlation; rel RMSE = RMSE / peak_gt (scale accuracy)")
 
     # ── pick figure sim (median r in test set) ───────────────────────────────
     med_r = float(np.median(all_r)) if all_r else 0.0
@@ -380,9 +382,9 @@ if __name__ == "__main__":
     print()
     print("=" * 60)
     print("NUMBERS FOR paper.md:")
-    print(f"  Dataset:    500 simulations, 30x30 mesh (961 nodes), 5x5 checkerboard")
+    print("  Dataset:    500 simulations, 30x30 mesh (961 nodes), 5x5 checkerboard")
     print(f"  Test set:   {n_test} simulations (15%)")
     print(f"  RMSE:       {rmse:.2f} um  (on affected nodes, >5% of peak uz)")
     print(f"  Pearson r:  {r:.3f}  (spatial pattern correlation)")
-    print(f"  Architecture: ConvDecoderPredictor (~170 K params)")
+    print("  Architecture: ConvDecoderPredictor (~170 K params)")
     print("=" * 60)
