@@ -9,6 +9,7 @@ Covers:
   - preview_file path-validation guards (no actual matplotlib window opened)
   - All public dialog methods are callable
 """
+
 import inspect
 import os
 import sys
@@ -16,7 +17,9 @@ import sys
 import numpy as np
 import pytest
 
-import sys as _sys, os as _os; _sys.path.insert(0, _os.path.dirname(__file__))
+import sys as _sys, os as _os
+
+_sys.path.insert(0, _os.path.dirname(__file__))
 from helpers import SAMPLE_DATASET
 
 # Make shotpeen_gui importable (it lives one level above tests/)
@@ -37,15 +40,14 @@ import shotpeen_gui as gui
 # 1. App initialisation
 # ===========================================================================
 
+
 class TestAppInit:
     def test_window_geometry_set(self, tk_root):
         app = gui.App(tk_root)  # noqa: F841
         tk_root.update_idletasks()
         geo = tk_root.geometry()
         # geometry() returns "WxH+X+Y"; check at least the WxH prefix
-        assert geo.startswith("1100x820"), (
-            f"Expected window to start with 1100x820, got {geo!r}"
-        )
+        assert geo.startswith("1100x820"), f"Expected window to start with 1100x820, got {geo!r}"
 
     def test_window_size_attribute(self, tk_root):
         app = gui.App(tk_root)
@@ -72,13 +74,13 @@ class TestAppInit:
             "_build_gaussian_gen_tab",
             "_wire_generator",
         ]:
-            assert callable(getattr(app, method, None)), \
-                f"App must have callable method: {method}"
+            assert callable(getattr(app, method, None)), f"App must have callable method: {method}"
 
 
 # ===========================================================================
 # 2. main_menu
 # ===========================================================================
+
 
 class TestMainMenu:
     def test_renders_without_error(self, tk_root):
@@ -98,16 +100,15 @@ class TestMainMenu:
 # 3. browse_file / browse_directory signatures
 # ===========================================================================
 
+
 class TestBrowseSignatures:
     def test_browse_file_accepts_parent_kwarg(self):
         sig = inspect.signature(gui.App.browse_file)
-        assert "parent" in sig.parameters, \
-            "browse_file must have a parent= parameter for window focus management"
+        assert "parent" in sig.parameters, "browse_file must have a parent= parameter for window focus management"
 
     def test_browse_directory_accepts_parent_kwarg(self):
         sig = inspect.signature(gui.App.browse_directory)
-        assert "parent" in sig.parameters, \
-            "browse_directory must have a parent= parameter for window focus management"
+        assert "parent" in sig.parameters, "browse_directory must have a parent= parameter for window focus management"
 
     def test_browse_file_parent_defaults_none(self):
         sig = inspect.signature(gui.App.browse_file)
@@ -122,9 +123,11 @@ class TestBrowseSignatures:
 # 4. num_of_simulations
 # ===========================================================================
 
+
 def _make_tk_root():
     """Create a hidden Tk root, or skip the test if no display is available."""
     import tkinter as tk
+
     try:
         root = tk.Tk()
     except tk.TclError:
@@ -164,6 +167,7 @@ class TestNumOfSimulations:
 # 5. check_file_in_folder
 # ===========================================================================
 
+
 class TestCheckFileInFolder:
     def test_returns_true_when_file_exists(self, tmp_path, tk_root):
         f = tmp_path / "test.npy"
@@ -184,6 +188,7 @@ class TestCheckFileInFolder:
 # 6. preview_file validation guards
 # ===========================================================================
 
+
 class TestPreviewFileValidation:
     """
     preview_file() must validate paths before calling matplotlib.
@@ -194,7 +199,8 @@ class TestPreviewFileValidation:
     def _patch_msgbox(self, monkeypatch, calls):
         """Redirect messagebox.showerror / showwarning into *calls* list."""
         import tkinter.messagebox as mb
-        monkeypatch.setattr(mb, "showerror",  lambda *a, **kw: calls.append(("error",   a)))
+
+        monkeypatch.setattr(mb, "showerror", lambda *a, **kw: calls.append(("error", a)))
         monkeypatch.setattr(mb, "showwarning", lambda *a, **kw: calls.append(("warning", a)))
 
     def test_nonexistent_path_shows_error(self, tk_root, monkeypatch):
@@ -236,13 +242,13 @@ class TestPreviewFileValidation:
         app = gui.App(tk_root)
         app.preview_file(str(tmp_path))
         tk_root.update()  # flush the root.after(0, ...) callback onto the event queue
-        assert previewed == [str(tmp_path)], \
-            "Valid path should call run_preview with the folder path"
+        assert previewed == [str(tmp_path)], "Valid path should call run_preview with the folder path"
 
 
 # ===========================================================================
 # 7. Dialog methods are callable (smoke tests — no window interaction)
 # ===========================================================================
+
 
 class TestDialogsCallable:
     def test_generate_dataset_dialog_callable(self, tk_root):

@@ -86,6 +86,7 @@ Shen & Atluri (2006) CMC vol. 4 no. 2 pp. 75-85.
 Zinn & Lohman (1999) "Shot peening nozzle design", Proc. ICSP 7.
 Bhuvaraghan et al. (2010) Int. J. Mech. Sci. 52(10), 1220–1229.
 """
+
 from __future__ import annotations
 
 import math
@@ -102,8 +103,9 @@ import numpy as np
 # The module works without PyTorch (falls back to the CPU shot loop).
 try:
     import torch
+
     _TORCH_AVAILABLE = True
-except ImportError:          # pragma: no cover
+except ImportError:  # pragma: no cover
     _TORCH_AVAILABLE = False
 
 # ---------------------------------------------------------------------------
@@ -113,7 +115,7 @@ _SRC = os.path.dirname(os.path.abspath(__file__))
 if _SRC not in sys.path:
     sys.path.insert(0, _SRC)
 
-from impact_sim import (           # noqa: E402
+from impact_sim import (  # noqa: E402
     ShotPeenParams,
     generate_mesh,
     compute_contact_params,
@@ -123,8 +125,8 @@ from impact_sim import (           # noqa: E402
     map_displacements,
     map_stresses,
 )
-from multi_shot_sim import compute_coverage   # noqa: E402
-from materials import (                       # noqa: E402
+from multi_shot_sim import compute_coverage  # noqa: E402
+from materials import (  # noqa: E402
     SHOT_MATERIALS,
     WORKPIECE_MATERIALS,
     get_shot,
@@ -146,6 +148,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 # 2.  Parameter container
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class GaussianNozzleParams:
@@ -202,39 +205,37 @@ class GaussianNozzleParams:
     """
 
     # Nozzle geometry
-    h_range: Tuple[float, float] = (0.050, 0.400)        # m: 50–400 mm
-    theta_div_range: Tuple[float, float] = (               # rad: 5deg–30deg
+    h_range: Tuple[float, float] = (0.050, 0.400)  # m: 50–400 mm
+    theta_div_range: Tuple[float, float] = (  # rad: 5deg–30deg
         math.radians(5.0),
         math.radians(30.0),
     )
     nozzle_pos_frac: Tuple[float, float] = (0.30, 0.70)  # fraction of Lx/Ly
 
     # Velocity distribution
-    V_mean_range: Tuple[float, float] = (25.0, 80.0)     # m/s
+    V_mean_range: Tuple[float, float] = (25.0, 80.0)  # m/s
     sigma_V_frac_range: Tuple[float, float] = (0.03, 0.20)
-    V_exit_min: float = 5.0                               # m/s hard lower bound
+    V_exit_min: float = 5.0  # m/s hard lower bound
 
     # Shots
     n_shots_range: Tuple[int, int] = (30, 200)
-    D_range: Tuple[float, float] = (0.0003, 0.0010)      # m
-    shot_materials: List[str] = field(
-        default_factory=lambda: ["steel", "ceramic", "glass", "cast_iron"]
-    )
+    D_range: Tuple[float, float] = (0.0003, 0.0010)  # m
+    shot_materials: List[str] = field(default_factory=lambda: ["steel", "ceramic", "glass", "cast_iron"])
 
     # Workpiece
     sigma_yield_range: Tuple[float, float] = (200e6, 800e6)  # Pa
-    E_b: float = 113.8e9     # Ti-6Al-4V Young's modulus (Pa)
-    nu_b: float = 0.34       # Ti-6Al-4V Poisson's ratio
+    E_b: float = 113.8e9  # Ti-6Al-4V Young's modulus (Pa)
+    nu_b: float = 0.34  # Ti-6Al-4V Poisson's ratio
 
     # Mesh
-    Lx: float = 0.040        # m (40 mm)
-    Ly: float = 0.040        # m (40 mm)
-    Lz: float = 0.004        # m (plate thickness for mesh)
-    Nx: int = 100             # elements per x-axis → 101 nodes
-    Ny: int = 100             # elements per y-axis → 101 nodes
+    Lx: float = 0.040  # m (40 mm)
+    Ly: float = 0.040  # m (40 mm)
+    Lz: float = 0.004  # m (plate thickness for mesh)
+    Nx: int = 100  # elements per x-axis → 101 nodes
+    Ny: int = 100  # elements per y-axis → 101 nodes
 
     # Checkerboard resolution
-    checkerboard_size: int = 20   # G × G grid
+    checkerboard_size: int = 20  # G × G grid
 
     # Output / reproducibility
     output_dir: str = "./Dataset_Gaussian"
@@ -247,6 +248,7 @@ class GaussianNozzleParams:
 # ---------------------------------------------------------------------------
 # 3.  Gaussian nozzle shot sampler
 # ---------------------------------------------------------------------------
+
 
 def sample_gaussian_nozzle_shots(
     h_nozzle: float,
@@ -295,7 +297,7 @@ def sample_gaussian_nozzle_shots(
     alpha    : (N,)   float — impact angle from surface normal (rad).
                alpha = 0 → perpendicular impact;  alpha = π/2 → grazing.
     """
-    sigma_xy = h_nozzle * math.tan(theta_div)     # spatial Gaussian spread (m)
+    sigma_xy = h_nozzle * math.tan(theta_div)  # spatial Gaussian spread (m)
 
     # Over-sample to account for shots landing off the plate.
     # The fraction inside the plate depends on how sxy compares to the
@@ -304,19 +306,16 @@ def sample_gaussian_nozzle_shots(
 
     # ---- Sample exit velocities (truncated Gaussian) ----
     V_raw = rng.normal(V_mean, sigma_V, n_candidate)
-    V_raw = np.clip(V_raw, V_exit_min, None)    # truncate below physical minimum
+    V_raw = np.clip(V_raw, V_exit_min, None)  # truncate below physical minimum
 
     # ---- Sample impact positions from 2-D Gaussian ----
-    dx = rng.normal(0.0, sigma_xy, n_candidate)   # x offset from nozzle axis (m)
-    dy = rng.normal(0.0, sigma_xy, n_candidate)   # y offset from nozzle axis (m)
+    dx = rng.normal(0.0, sigma_xy, n_candidate)  # x offset from nozzle axis (m)
+    dy = rng.normal(0.0, sigma_xy, n_candidate)  # y offset from nozzle axis (m)
     x_imp = nozzle_x + dx
     y_imp = nozzle_y + dy
 
     # ---- Keep only on-plate shots ----
-    on_plate = (
-        (x_imp >= 0.0) & (x_imp <= Lx) &
-        (y_imp >= 0.0) & (y_imp <= Ly)
-    )
+    on_plate = (x_imp >= 0.0) & (x_imp <= Lx) & (y_imp >= 0.0) & (y_imp <= Ly)
     x_imp = x_imp[on_plate]
     y_imp = y_imp[on_plate]
     V_raw = V_raw[on_plate]
@@ -341,9 +340,9 @@ def sample_gaussian_nozzle_shots(
 
     # ---- Compute angle-corrected normal velocity ----
     r = np.sqrt((x_imp - nozzle_x) ** 2 + (y_imp - nozzle_y) ** 2)
-    alpha = np.arctan2(r, h_nozzle)              # impact angle from normal (rad)
-    V_normal = V_raw * np.cos(alpha)             # Hertz normal component (m/s)
-    V_normal = np.clip(V_normal, V_exit_min, None)   # safety floor
+    alpha = np.arctan2(r, h_nozzle)  # impact angle from normal (rad)
+    V_normal = V_raw * np.cos(alpha)  # Hertz normal component (m/s)
+    V_normal = np.clip(V_normal, V_exit_min, None)  # safety floor
 
     centres = np.stack([x_imp, y_imp], axis=1).astype(np.float32)
     return centres, V_normal.astype(np.float32), V_raw.astype(np.float32), alpha.astype(np.float32)
@@ -352,6 +351,7 @@ def sample_gaussian_nozzle_shots(
 # ---------------------------------------------------------------------------
 # 4.  Derive checkerboard from Gaussian shot distribution
 # ---------------------------------------------------------------------------
+
 
 def gaussian_density_checkerboard(
     centres: np.ndarray,
@@ -439,6 +439,7 @@ def gaussian_density_checkerboard(
 # exactly so CPU and GPU paths produce numerically identical results.
 # ---------------------------------------------------------------------------
 
+
 def _compute_elem_centroids(mesh: Dict) -> np.ndarray:
     """Return element centroid coordinates as a (N_elems, 3) float32 array.
 
@@ -454,9 +455,9 @@ def _compute_elem_centroids(mesh: Dict) -> np.ndarray:
     -------
     centroids : (N_elems, 3) float32.
     """
-    node_coords  = mesh["node_coords"]          # (N_nodes, 3) float32
-    node_labels  = mesh["node_labels"]          # (N_nodes,)   int32
-    connectivity = mesh["element_connectivity"] # (N_elems, 4) int32
+    node_coords = mesh["node_coords"]  # (N_nodes, 3) float32
+    node_labels = mesh["node_labels"]  # (N_nodes,)   int32
+    connectivity = mesh["element_connectivity"]  # (N_elems, 4) int32
 
     # Build label -> 0-based index mapping (same as map_stresses)
     label_to_idx = np.empty(int(node_labels.max()) + 1, dtype=np.int64)
@@ -464,19 +465,19 @@ def _compute_elem_centroids(mesh: Dict) -> np.ndarray:
 
     # Map each connectivity entry to a 0-based index, then average
     idx_matrix = label_to_idx[connectivity.astype(np.int64)]  # (N_elems, 4)
-    centroids   = node_coords[idx_matrix].mean(axis=1)         # (N_elems, 3)
+    centroids = node_coords[idx_matrix].mean(axis=1)  # (N_elems, 3)
     return centroids.astype(np.float32)
 
 
 def _precompute_shot_scalars(
-    n_actual:     int,
-    alpha:        np.ndarray,   # (N_actual,) impact angles from normal (rad)
-    V_exit:       np.ndarray,   # (N_actual,) exit speeds (m/s)
-    D:            float,
-    mat_props:    Dict[str, float],
-    sigma_yield:  float,
-    E_b:          float,
-    nu_b:         float,
+    n_actual: int,
+    alpha: np.ndarray,  # (N_actual,) impact angles from normal (rad)
+    V_exit: np.ndarray,  # (N_actual,) exit speeds (m/s)
+    D: float,
+    mat_props: Dict[str, float],
+    sigma_yield: float,
+    E_b: float,
+    nu_b: float,
 ) -> Tuple[Dict[str, np.ndarray], List, List, Dict]:
     """Pre-compute Shen & Atluri scalar parameters for every shot on the CPU.
 
@@ -517,10 +518,10 @@ def _precompute_shot_scalars(
     sR_profiles : list of (L, 2) float32 arrays [[depth, sR], ...].
     plastic_ref : plastic zone dict for the first shot (used for coverage).
     """
-    a_p_arr    = np.empty(n_actual, dtype=np.float64)
-    r_p_arr    = np.empty(n_actual, dtype=np.float64)
-    delta_p_arr= np.empty(n_actual, dtype=np.float64)
-    sR_surf_arr= np.empty(n_actual, dtype=np.float64)
+    a_p_arr = np.empty(n_actual, dtype=np.float64)
+    r_p_arr = np.empty(n_actual, dtype=np.float64)
+    delta_p_arr = np.empty(n_actual, dtype=np.float64)
+    sR_surf_arr = np.empty(n_actual, dtype=np.float64)
 
     energy_list: List[Dict] = []
     sR_profiles: List[np.ndarray] = []
@@ -529,7 +530,7 @@ def _precompute_shot_scalars(
     for i in range(n_actual):
         # Impact angle from surface (ShotPeenParams convention: phi = pi/2 is normal)
         phi_i = math.pi / 2.0 - float(alpha[i])
-        phi_i = max(phi_i, math.radians(5.0))   # numerical floor: avoid grazing singularity
+        phi_i = max(phi_i, math.radians(5.0))  # numerical floor: avoid grazing singularity
 
         p_i = ShotPeenParams(
             E_s=mat_props["E_s"],
@@ -541,16 +542,16 @@ def _precompute_shot_scalars(
             sigma_yield=sigma_yield,
             V=float(V_exit[i]),
             phi=phi_i,
-            n_depth=500,    # coarse depth resolution — only sR_surf matters here
+            n_depth=500,  # coarse depth resolution — only sR_surf matters here
         )
 
         contact_i = compute_contact_params(p_i)
         plastic_i = compute_plastic_zone(p_i)
-        sf_i      = compute_stress_field(contact_i, p_i)
-        energy_i  = compute_energy_balance(p_i, contact_i, plastic_i)
+        sf_i = compute_stress_field(contact_i, p_i)
+        energy_i = compute_energy_balance(p_i, contact_i, plastic_i)
 
-        a_p_arr[i]     = plastic_i["a_p"]
-        r_p_arr[i]     = plastic_i["r_p"]
+        a_p_arr[i] = plastic_i["a_p"]
+        r_p_arr[i] = plastic_i["r_p"]
         delta_p_arr[i] = plastic_i["a_p"] ** 2 / (2.0 * p_i.R)
         # sR_profile[0] is the value at z = ae/1000 (shallowest computed depth).
         # map_stresses uses np.interp(z_elem=0, Z, sR, left=sR[0]) which returns
@@ -558,28 +559,26 @@ def _precompute_shot_scalars(
         sR_surf_arr[i] = float(sf_i["sR"][0])
 
         energy_list.append(energy_i)
-        sR_profiles.append(
-            np.stack([sf_i["Z"], sf_i["sR"]], axis=1).astype(np.float32)
-        )
+        sR_profiles.append(np.stack([sf_i["Z"], sf_i["sR"]], axis=1).astype(np.float32))
         if i == 0:
             plastic_ref = plastic_i
 
     scalars = {
-        "a_p":        a_p_arr,
-        "r_p":        r_p_arr,
-        "delta_p":    delta_p_arr,
+        "a_p": a_p_arr,
+        "r_p": r_p_arr,
+        "delta_p": delta_p_arr,
         "sR_surface": sR_surf_arr,
     }
     return scalars, energy_list, sR_profiles, plastic_ref
 
 
 def _superpose_shots_batched(
-    centres:     np.ndarray,       # (N_shots, 2) float32 — (x,y) on plate
-    scalars:     Dict[str, np.ndarray],
-    node_xy:     np.ndarray,       # (N_nodes, 2) float32 — surface node (x,y)
-    elem_xy:     np.ndarray,       # (N_elems, 2) float32 — element centroid (x,y)
-    device:      "torch.device",   # pre-resolved torch.device
-    chunk_nodes: int,              # nodes processed per GPU batch
+    centres: np.ndarray,  # (N_shots, 2) float32 — (x,y) on plate
+    scalars: Dict[str, np.ndarray],
+    node_xy: np.ndarray,  # (N_nodes, 2) float32 — surface node (x,y)
+    elem_xy: np.ndarray,  # (N_elems, 2) float32 — element centroid (x,y)
+    device: "torch.device",  # pre-resolved torch.device
+    chunk_nodes: int,  # nodes processed per GPU batch
 ) -> Tuple[np.ndarray, np.ndarray]:
     """PyTorch vectorised shot superposition — runs on CUDA when available.
 
@@ -623,14 +622,14 @@ def _superpose_shots_batched(
     def _t(arr):
         return torch.tensor(arr, dtype=torch.float32, device=device)
 
-    sx  = _t(centres[:, 0])            # shot x  (N_shots,)
-    sy  = _t(centres[:, 1])            # shot y
-    ap  = _t(scalars["a_p"])           # dent radius
-    rp  = _t(scalars["r_p"]).clamp(min=1e-15)
-    dp  = _t(scalars["delta_p"])       # permanent indent depth
-    sR  = _t(scalars["sR_surface"])    # surface residual stress
+    sx = _t(centres[:, 0])  # shot x  (N_shots,)
+    sy = _t(centres[:, 1])  # shot y
+    ap = _t(scalars["a_p"])  # dent radius
+    rp = _t(scalars["r_p"]).clamp(min=1e-15)
+    dp = _t(scalars["delta_p"])  # permanent indent depth
+    sR = _t(scalars["sR_surface"])  # surface residual stress
 
-    nx_all = _t(node_xy[:, 0])         # node x  (N_nodes,)
+    nx_all = _t(node_xy[:, 0])  # node x  (N_nodes,)
     ny_all = _t(node_xy[:, 1])
 
     # ---- Displacement accumulator (CPU, to avoid one large GPU alloc) ----
@@ -641,15 +640,15 @@ def _superpose_shots_batched(
     # ---- Process nodes in chunks ----
     for k0 in range(0, N_nodes, chunk_nodes):
         k1 = min(k0 + chunk_nodes, N_nodes)
-        C  = k1 - k0                   # chunk width
+        C = k1 - k0  # chunk width
 
         # Node subset: broadcast against shots → (N_shots, C)
-        nxc = nx_all[k0:k1].unsqueeze(0)   # (1, C)
+        nxc = nx_all[k0:k1].unsqueeze(0)  # (1, C)
         nyc = ny_all[k0:k1].unsqueeze(0)
 
-        dxc = sx.unsqueeze(1) - nxc        # (N_shots, C)
+        dxc = sx.unsqueeze(1) - nxc  # (N_shots, C)
         dyc = sy.unsqueeze(1) - nyc
-        rc  = torch.sqrt(dxc * dxc + dyc * dyc)
+        rc = torch.sqrt(dxc * dxc + dyc * dyc)
 
         # Per-shot scalars broadcast: (N_shots, 1)
         ap1 = ap.unsqueeze(1).clamp(min=1e-15)
@@ -657,28 +656,26 @@ def _superpose_shots_batched(
         dp1 = dp.unsqueeze(1)
 
         # --- Normal displacement uz ---
-        in_dent  = rc.le(ap1)                          # r <= a_p
-        in_trans = rc.gt(ap1) & rc.le(rp1)             # a_p < r <= r_p
+        in_dent = rc.le(ap1)  # r <= a_p
+        in_trans = rc.gt(ap1) & rc.le(rp1)  # a_p < r <= r_p
 
         # Dent region: uz = -dp * (1 - (r/ap)^2)
-        uz_dent  = dp1.neg() * (1.0 - (rc / ap1).pow(2))
+        uz_dent = dp1.neg() * (1.0 - (rc / ap1).pow(2))
 
         # Transition: uz = -dp * (ap/r)^2 * exp(-(r-ap)/ap)
-        rc_s     = rc.clamp(min=1e-15)
+        rc_s = rc.clamp(min=1e-15)
         uz_trans = dp1.neg() * (ap1 / rc_s).pow(2) * torch.exp((ap1 - rc) / ap1.clamp(min=1e-15))
 
-        uz_chunk = torch.where(in_dent,  uz_dent,
-                   torch.where(in_trans, uz_trans,
-                                torch.zeros_like(rc)))
+        uz_chunk = torch.where(in_dent, uz_dent, torch.where(in_trans, uz_trans, torch.zeros_like(rc)))
 
         # --- Radial bulge ur → decomposed into ux, uy ---
         ur_chunk = (2.0 / 3.0) * dp1 * (rc / rp1) * torch.exp(-(rc / rp1).pow(2))
 
         # cos/sin of azimuthal angle; zero at r=0 (shot centre)
-        r_safe   = rc.clamp(min=1e-15)
-        nonzero  = rc.gt(1e-15)
-        cos_t    = torch.where(nonzero, dxc / r_safe, torch.zeros_like(dxc))
-        sin_t    = torch.where(nonzero, dyc / r_safe, torch.zeros_like(dyc))
+        r_safe = rc.clamp(min=1e-15)
+        nonzero = rc.gt(1e-15)
+        cos_t = torch.where(nonzero, dxc / r_safe, torch.zeros_like(dxc))
+        sin_t = torch.where(nonzero, dyc / r_safe, torch.zeros_like(dyc))
 
         ux_chunk = ur_chunk * cos_t
         uy_chunk = ur_chunk * sin_t
@@ -691,45 +688,41 @@ def _superpose_shots_batched(
         del dxc, dyc, rc, uz_dent, uz_trans, uz_chunk, ur_chunk, ux_chunk, uy_chunk
 
     # ---- Stress accumulator ----
-    ex_all = _t(elem_xy[:, 0])     # (N_elems,)
+    ex_all = _t(elem_xy[:, 0])  # (N_elems,)
     ey_all = _t(elem_xy[:, 1])
     S11_acc = np.zeros(N_elems, dtype=np.float64)
 
-    sig_r = (rp / 2.0).clamp(min=1e-15)    # (N_shots,) Gaussian spread parameter
+    sig_r = (rp / 2.0).clamp(min=1e-15)  # (N_shots,) Gaussian spread parameter
 
     for e0 in range(0, N_elems, chunk_nodes):
-        e1  = min(e0 + chunk_nodes, N_elems)
-        exc = ex_all[e0:e1].unsqueeze(0)   # (1, chunk_e)
+        e1 = min(e0 + chunk_nodes, N_elems)
+        exc = ex_all[e0:e1].unsqueeze(0)  # (1, chunk_e)
         eyc = ey_all[e0:e1].unsqueeze(0)
 
-        dxe  = sx.unsqueeze(1) - exc        # (N_shots, chunk_e)
-        dye  = sy.unsqueeze(1) - eyc
-        re   = torch.sqrt(dxe * dxe + dye * dye)
+        dxe = sx.unsqueeze(1) - exc  # (N_shots, chunk_e)
+        dye = sy.unsqueeze(1) - eyc
+        re = torch.sqrt(dxe * dxe + dye * dye)
 
-        sig1 = sig_r.unsqueeze(1)           # (N_shots, 1)
-        rp1  = rp.unsqueeze(1)
-        sR1  = sR.unsqueeze(1)
+        sig1 = sig_r.unsqueeze(1)  # (N_shots, 1)
+        rp1 = rp.unsqueeze(1)
+        sR1 = sR.unsqueeze(1)
 
         # Gaussian radial attenuation (cutoff beyond 3*r_p)
-        G_r  = torch.exp(-re.pow(2) / (2.0 * sig1.pow(2)))
-        G_r  = torch.where(re.gt(3.0 * rp1), torch.zeros_like(G_r), G_r)
+        G_r = torch.exp(-re.pow(2) / (2.0 * sig1.pow(2)))
+        G_r = torch.where(re.gt(3.0 * rp1), torch.zeros_like(G_r), G_r)
 
         S11_acc[e0:e1] = (sR1 * G_r).sum(0).cpu().numpy()
 
         del dxe, dye, re, G_r
 
     # ---- Build output arrays ----
-    displacements = np.stack(
-        [ux_acc, uy_acc, uz_acc], axis=1
-    ).astype(np.float32)
+    displacements = np.stack([ux_acc, uy_acc, uz_acc], axis=1).astype(np.float32)
 
     S11 = S11_acc.astype(np.float32)
     stresses = np.stack(
-        [S11, S11.copy(),
-         np.zeros(N_elems, dtype=np.float32),
-         np.zeros(N_elems, dtype=np.float32)],
+        [S11, S11.copy(), np.zeros(N_elems, dtype=np.float32), np.zeros(N_elems, dtype=np.float32)],
         axis=1,
-    )                   # (N_elems, 4) — [S11, S22, S33=0, S12=0]
+    )  # (N_elems, 4) — [S11, S22, S33=0, S12=0]
 
     return displacements, stresses
 
@@ -753,17 +746,17 @@ def _resolve_device_and_chunk(N_shots: int, N_nodes: int) -> Tuple["torch.device
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    bytes_per_node_per_shot = 9 * 4     # 9 float32 intermediate tensors
-    bytes_total_per_node    = bytes_per_node_per_shot * N_shots
+    bytes_per_node_per_shot = 9 * 4  # 9 float32 intermediate tensors
+    bytes_total_per_node = bytes_per_node_per_shot * N_shots
 
     if device.type == "cuda":
         try:
             free_bytes, _ = torch.cuda.mem_get_info(device)
             budget = int(free_bytes * 0.60)
         except Exception:
-            budget = 4 * (1024 ** 3)    # 4 GB conservative fallback
+            budget = 4 * (1024**3)  # 4 GB conservative fallback
     else:
-        budget = 1 * (1024 ** 3)        # 1 GB on CPU
+        budget = 1 * (1024**3)  # 1 GB on CPU
 
     chunk = max(4096, min(N_nodes, int(budget / max(1, bytes_total_per_node))))
     return device, chunk
@@ -772,6 +765,7 @@ def _resolve_device_and_chunk(N_shots: int, N_nodes: int) -> Tuple["torch.device
 # ---------------------------------------------------------------------------
 # 5.  Single-simulation runner
 # ---------------------------------------------------------------------------
+
 
 def run_gaussian_nozzle_simulation(
     sim_index: int,
@@ -808,29 +802,32 @@ def run_gaussian_nozzle_simulation(
     # ------------------------------------------------------------------
 
     # Nozzle geometry
-    h_nozzle  = float(rng.uniform(*gen_params.h_range))
+    h_nozzle = float(rng.uniform(*gen_params.h_range))
     theta_div = float(rng.uniform(*gen_params.theta_div_range))
-    nozzle_x  = float(rng.uniform(
-        gen_params.Lx * gen_params.nozzle_pos_frac[0],
-        gen_params.Lx * gen_params.nozzle_pos_frac[1],
-    ))
-    nozzle_y  = float(rng.uniform(
-        gen_params.Ly * gen_params.nozzle_pos_frac[0],
-        gen_params.Ly * gen_params.nozzle_pos_frac[1],
-    ))
+    nozzle_x = float(
+        rng.uniform(
+            gen_params.Lx * gen_params.nozzle_pos_frac[0],
+            gen_params.Lx * gen_params.nozzle_pos_frac[1],
+        )
+    )
+    nozzle_y = float(
+        rng.uniform(
+            gen_params.Ly * gen_params.nozzle_pos_frac[0],
+            gen_params.Ly * gen_params.nozzle_pos_frac[1],
+        )
+    )
 
     # Velocity distribution
-    V_mean   = float(rng.uniform(*gen_params.V_mean_range))
-    cv       = float(rng.uniform(*gen_params.sigma_V_frac_range))
-    sigma_V  = cv * V_mean
+    V_mean = float(rng.uniform(*gen_params.V_mean_range))
+    cv = float(rng.uniform(*gen_params.sigma_V_frac_range))
+    sigma_V = cv * V_mean
 
     # Shots
-    n_shots  = int(rng.integers(gen_params.n_shots_range[0],
-                                gen_params.n_shots_range[1] + 1))
-    D        = float(rng.uniform(*gen_params.D_range))
+    n_shots = int(rng.integers(gen_params.n_shots_range[0], gen_params.n_shots_range[1] + 1))
+    D = float(rng.uniform(*gen_params.D_range))
 
     # Shot material — pick uniformly from allowed materials
-    mat_name  = str(rng.choice(gen_params.shot_materials))
+    mat_name = str(rng.choice(gen_params.shot_materials))
     mat_props = SHOT_MATERIALS[mat_name]
 
     # Workpiece
@@ -855,8 +852,13 @@ def run_gaussian_nozzle_simulation(
         )
     except Exception as exc:
         elapsed = time.perf_counter() - t0
-        return {"sim_index": sim_index, "output_dir": out_folder,
-                "elapsed_s": elapsed, "success": False, "error": str(exc)}
+        return {
+            "sim_index": sim_index,
+            "output_dir": out_folder,
+            "elapsed_s": elapsed,
+            "success": False,
+            "error": str(exc),
+        }
 
     n_actual = len(centres)
 
@@ -876,9 +878,13 @@ def run_gaussian_nozzle_simulation(
         N_elems = len(mesh["element_labels"])
     except Exception as exc:
         elapsed = time.perf_counter() - t0
-        return {"sim_index": sim_index, "output_dir": out_folder,
-                "elapsed_s": elapsed, "success": False,
-                "error": f"Mesh generation failed: {exc}"}
+        return {
+            "sim_index": sim_index,
+            "output_dir": out_folder,
+            "elapsed_s": elapsed,
+            "success": False,
+            "error": f"Mesh generation failed: {exc}",
+        }
 
     # ------------------------------------------------------------------
     # Superpose shots analytically (Shen & Atluri)
@@ -895,12 +901,16 @@ def run_gaussian_nozzle_simulation(
     # ------------------------------------------------------------------
     try:
         # ---- Phase 1: CPU scalar extraction ----
-        shot_scalars, energy_list, sR_profiles, plastic_ref = \
-            _precompute_shot_scalars(
-                n_actual, alpha, V_exit, D,
-                mat_props, sigma_yield,
-                gen_params.E_b, gen_params.nu_b,
-            )
+        shot_scalars, energy_list, sR_profiles, plastic_ref = _precompute_shot_scalars(
+            n_actual,
+            alpha,
+            V_exit,
+            D,
+            mat_props,
+            sigma_yield,
+            gen_params.E_b,
+            gen_params.nu_b,
+        )
 
         # ---- Phase 2: spatial superposition ----
         if _TORCH_AVAILABLE:
@@ -925,7 +935,7 @@ def run_gaussian_nozzle_simulation(
         else:
             # CPU fallback — original per-shot loop using map_displacements /
             # map_stresses (identical physics, just sequential).
-            disp_total   = np.zeros((N_nodes, 3), dtype=np.float64)
+            disp_total = np.zeros((N_nodes, 3), dtype=np.float64)
             stress_total = np.zeros((N_elems, 4), dtype=np.float64)
 
             for i in range(n_actual):
@@ -947,58 +957,71 @@ def run_gaussian_nozzle_simulation(
                 contact_i = compute_contact_params(p_i)
                 # Reuse pre-computed plastic zone and sR profile from Phase 1
                 plastic_i = {
-                    "a_p":        shot_scalars["a_p"][i],
-                    "r_p":        shot_scalars["r_p"][i],
-                    "epsilon_Mp": 0.0, "V_p": 0.0, "W_t": 0.0,
+                    "a_p": shot_scalars["a_p"][i],
+                    "r_p": shot_scalars["r_p"][i],
+                    "epsilon_Mp": 0.0,
+                    "V_p": 0.0,
+                    "W_t": 0.0,
                 }
                 sf_i = {
-                    "Z":  sR_profiles[i][:, 0].astype(np.float64),
+                    "Z": sR_profiles[i][:, 0].astype(np.float64),
                     "sR": sR_profiles[i][:, 1].astype(np.float64),
                 }
                 ic = np.array([centres[i, 0], centres[i, 1], 0.0])
 
-                _, disp_i   = map_displacements(mesh, contact_i, plastic_i, p_i, ic)
+                _, disp_i = map_displacements(mesh, contact_i, plastic_i, p_i, ic)
                 _, stress_i = map_stresses(mesh, sf_i, plastic_i, p_i, ic)
 
-                disp_total   += disp_i.astype(np.float64)
+                disp_total += disp_i.astype(np.float64)
                 stress_total += stress_i.astype(np.float64)
 
-            disp_f32   = disp_total.astype(np.float32)
+            disp_f32 = disp_total.astype(np.float32)
             stress_f32 = stress_total.astype(np.float32)
 
         # Mean residual stress depth profile across all shots
-        min_len  = min(p.shape[0] for p in sR_profiles) if sR_profiles else 1
+        min_len = min(p.shape[0] for p in sR_profiles) if sR_profiles else 1
         sR_stack = np.stack([p[:min_len, :] for p in sR_profiles], axis=0)
-        sR_mean  = sR_stack.mean(axis=0)
+        sR_mean = sR_stack.mean(axis=0)
 
         # Coverage (Avrami equation — mesh-resolution independent)
         coverage_info = compute_coverage(
-            disp_f32, plastic_ref, mesh["node_coords"],
-            gen_params.Lx, gen_params.Ly,
+            disp_f32,
+            plastic_ref,
+            mesh["node_coords"],
+            gen_params.Lx,
+            gen_params.Ly,
             centres=centres,
         )
         almen_MPa = float(np.min(stress_f32[:, 0]) / 1e6)
 
     except Exception as exc:
         elapsed = time.perf_counter() - t0
-        return {"sim_index": sim_index, "output_dir": out_folder,
-                "elapsed_s": elapsed, "success": False,
-                "error": f"Simulation failed: {exc}"}
+        return {
+            "sim_index": sim_index,
+            "output_dir": out_folder,
+            "elapsed_s": elapsed,
+            "success": False,
+            "error": f"Simulation failed: {exc}",
+        }
 
     # ------------------------------------------------------------------
     # Build Gaussian-derived checkerboard (primary ML input)
     # ------------------------------------------------------------------
     checkerboard = gaussian_density_checkerboard(
-        centres, V_normal,
-        gen_params.Lx, gen_params.Ly,
+        centres,
+        V_normal,
+        gen_params.Lx,
+        gen_params.Ly,
         gen_params.checkerboard_size,
-        mode="energy",          # V_n²-weighted density per cell
+        mode="energy",  # V_n²-weighted density per cell
     )
 
     # Also save a raw count checkerboard for comparison
     checkerboard_count = gaussian_density_checkerboard(
-        centres, V_normal,
-        gen_params.Lx, gen_params.Ly,
+        centres,
+        V_normal,
+        gen_params.Lx,
+        gen_params.Ly,
         gen_params.checkerboard_size,
         mode="count",
     )
@@ -1009,85 +1032,86 @@ def run_gaussian_nozzle_simulation(
     try:
         os.makedirs(out_folder, exist_ok=True)
 
-        np.save(os.path.join(out_folder, "node_labels.npy"),
-                mesh["node_labels"])
-        np.save(os.path.join(out_folder, "node_coords.npy"),
-                mesh["node_coords"])
-        np.save(os.path.join(out_folder, "element_labels.npy"),
-                mesh["element_labels"])
-        np.save(os.path.join(out_folder, "element_connectivity.npy"),
-                mesh["element_connectivity"])
-        np.save(os.path.join(out_folder, "disp_node_labels.npy"),
-                mesh["node_labels"])
-        np.save(os.path.join(out_folder, "displacements.npy"),
-                disp_f32)
-        np.save(os.path.join(out_folder, "stress_element_labels.npy"),
-                mesh["element_labels"])
-        np.save(os.path.join(out_folder, "stresses.npy"),
-                stress_f32)
-        np.save(os.path.join(out_folder, "sR_depth_profile.npy"),
-                sR_mean)
-        np.save(os.path.join(out_folder, "checkerboard.npy"),
-                checkerboard)
-        np.save(os.path.join(out_folder, "checkerboard_count.npy"),
-                checkerboard_count)
-        np.save(os.path.join(out_folder, "shot_positions.npy"),
-                centres)
-        np.save(os.path.join(out_folder, "shot_V_normal.npy"),
-                V_normal)
-        np.save(os.path.join(out_folder, "shot_V_exit.npy"),
-                V_exit)
-        np.save(os.path.join(out_folder, "shot_angles.npy"),
-                alpha)
+        np.save(os.path.join(out_folder, "node_labels.npy"), mesh["node_labels"])
+        np.save(os.path.join(out_folder, "node_coords.npy"), mesh["node_coords"])
+        np.save(os.path.join(out_folder, "element_labels.npy"), mesh["element_labels"])
+        np.save(os.path.join(out_folder, "element_connectivity.npy"), mesh["element_connectivity"])
+        np.save(os.path.join(out_folder, "disp_node_labels.npy"), mesh["node_labels"])
+        np.save(os.path.join(out_folder, "displacements.npy"), disp_f32)
+        np.save(os.path.join(out_folder, "stress_element_labels.npy"), mesh["element_labels"])
+        np.save(os.path.join(out_folder, "stresses.npy"), stress_f32)
+        np.save(os.path.join(out_folder, "sR_depth_profile.npy"), sR_mean)
+        np.save(os.path.join(out_folder, "checkerboard.npy"), checkerboard)
+        np.save(os.path.join(out_folder, "checkerboard_count.npy"), checkerboard_count)
+        np.save(os.path.join(out_folder, "shot_positions.npy"), centres)
+        np.save(os.path.join(out_folder, "shot_V_normal.npy"), V_normal)
+        np.save(os.path.join(out_folder, "shot_V_exit.npy"), V_exit)
+        np.save(os.path.join(out_folder, "shot_angles.npy"), alpha)
 
         # Human-readable traceability files
         _write_nozzle_metadata(
-            out_folder, sim_index, gen_params,
-            h_nozzle, theta_div, nozzle_x, nozzle_y,
-            V_mean, sigma_V, n_shots, n_actual, D,
-            mat_name, sigma_yield, coverage_info, almen_MPa,
+            out_folder,
+            sim_index,
+            gen_params,
+            h_nozzle,
+            theta_div,
+            nozzle_x,
+            nozzle_y,
+            V_mean,
+            sigma_V,
+            n_shots,
+            n_actual,
+            D,
+            mat_name,
+            sigma_yield,
+            coverage_info,
+            almen_MPa,
         )
 
     except Exception as exc:
         elapsed = time.perf_counter() - t0
-        return {"sim_index": sim_index, "output_dir": out_folder,
-                "elapsed_s": elapsed, "success": False,
-                "error": f"Save failed: {exc}"}
+        return {
+            "sim_index": sim_index,
+            "output_dir": out_folder,
+            "elapsed_s": elapsed,
+            "success": False,
+            "error": f"Save failed: {exc}",
+        }
 
     elapsed = time.perf_counter() - t0
-    sigma_xy_mm = h_nozzle * 1e3 * math.tan(theta_div)   # Gaussian spread in mm
+    sigma_xy_mm = h_nozzle * 1e3 * math.tan(theta_div)  # Gaussian spread in mm
 
     return {
-        "sim_index":       sim_index,
-        "output_dir":      out_folder,
+        "sim_index": sim_index,
+        "output_dir": out_folder,
         # Mesh
-        "n_nodes":         N_nodes,
-        "n_elems":         N_elems,
+        "n_nodes": N_nodes,
+        "n_elems": N_elems,
         # Nozzle
-        "h_nozzle_mm":     h_nozzle * 1e3,
-        "theta_div_deg":   math.degrees(theta_div),
-        "sigma_xy_mm":     sigma_xy_mm,
-        "nozzle_x_mm":     nozzle_x * 1e3,
-        "nozzle_y_mm":     nozzle_y * 1e3,
+        "h_nozzle_mm": h_nozzle * 1e3,
+        "theta_div_deg": math.degrees(theta_div),
+        "sigma_xy_mm": sigma_xy_mm,
+        "nozzle_x_mm": nozzle_x * 1e3,
+        "nozzle_y_mm": nozzle_y * 1e3,
         # Velocity
-        "V_mean_mps":      V_mean,
-        "sigma_V_mps":     sigma_V,
+        "V_mean_mps": V_mean,
+        "sigma_V_mps": sigma_V,
         "V_normal_mean_mps": float(np.mean(V_normal)),
-        "V_normal_min_mps":  float(np.min(V_normal)),
-        "alpha_mean_deg":    float(np.degrees(np.mean(alpha))),
+        "V_normal_min_mps": float(np.min(V_normal)),
+        "alpha_mean_deg": float(np.degrees(np.mean(alpha))),
         # Shots
-        "n_shots_target":  n_shots,
-        "n_shots_actual":  n_actual,
-        "D_mm":            D * 1e3,
-        "material":        mat_name,
+        "n_shots_target": n_shots,
+        "n_shots_actual": n_actual,
+        "D_mm": D * 1e3,
+        "material": mat_name,
         # Workpiece
         "sigma_yield_MPa": sigma_yield / 1e6,
         # Results
         "coverage_percent": coverage_info["coverage_percent"],
-        "almen_MPa":       almen_MPa,
-        "elapsed_s":       elapsed,
-        "success":         True,
-        "error":           None,
+        "almen_MPa": almen_MPa,
+        "elapsed_s": elapsed,
+        "success": True,
+        "error": None,
     }
 
 
@@ -1152,6 +1176,7 @@ def _write_nozzle_metadata(
 # 6.  Main dataset generator
 # ---------------------------------------------------------------------------
 
+
 def generate_gaussian_dataset(
     gen_params: Optional[GaussianNozzleParams] = None,
     verbose: bool = True,
@@ -1173,10 +1198,12 @@ def generate_gaussian_dataset(
 
     os.makedirs(gen_params.output_dir, exist_ok=True)
 
-    indices = list(range(
-        gen_params.start_index,
-        gen_params.start_index + gen_params.n_simulations,
-    ))
+    indices = list(
+        range(
+            gen_params.start_index,
+            gen_params.start_index + gen_params.n_simulations,
+        )
+    )
     n_total = len(indices)
 
     _log = print if verbose else (lambda *a, **k: None)
@@ -1184,8 +1211,7 @@ def generate_gaussian_dataset(
 
     # Report compute backend
     if _TORCH_AVAILABLE:
-        _dev_str = ("CUDA (" + torch.cuda.get_device_name(0) + ")"
-                    if torch.cuda.is_available() else "CPU (torch)")
+        _dev_str = "CUDA (" + torch.cuda.get_device_name(0) + ")" if torch.cuda.is_available() else "CPU (torch)"
     else:
         _dev_str = "CPU (numpy fallback -- install torch for GPU)"
 
@@ -1195,20 +1221,18 @@ def generate_gaussian_dataset(
     _log(f"  Output        : {gen_params.output_dir}")
     _log(f"  Cases         : {n_total}  (indices {indices[0]}-{indices[-1]})")
     _log(f"  Plate         : {gen_params.Lx*1e3:.0f} mm x {gen_params.Ly*1e3:.0f} mm")
-    _log(f"  Mesh          : {gen_params.Nx} x {gen_params.Ny}  "
-         f"-> {n_nodes_expected} nodes")
+    _log(f"  Mesh          : {gen_params.Nx} x {gen_params.Ny}  " f"-> {n_nodes_expected} nodes")
     _log(f"  Compute       : {_dev_str}")
     _log(f"  Workers       : {gen_params.workers}")
     _log(f"  Checkerboard  : {gen_params.checkerboard_size} x {gen_params.checkerboard_size}")
-    _log(f"  Nozzle h      : {gen_params.h_range[0]*1e3:.0f}-"
-         f"{gen_params.h_range[1]*1e3:.0f} mm")
-    _log(f"  Jet div angle : {math.degrees(gen_params.theta_div_range[0]):.0f}deg-"
-         f"{math.degrees(gen_params.theta_div_range[1]):.0f}deg")
-    _log(f"  V_mean        : {gen_params.V_mean_range[0]:.0f}-"
-         f"{gen_params.V_mean_range[1]:.0f} m/s")
+    _log(f"  Nozzle h      : {gen_params.h_range[0]*1e3:.0f}-" f"{gen_params.h_range[1]*1e3:.0f} mm")
+    _log(
+        f"  Jet div angle : {math.degrees(gen_params.theta_div_range[0]):.0f}deg-"
+        f"{math.degrees(gen_params.theta_div_range[1]):.0f}deg"
+    )
+    _log(f"  V_mean        : {gen_params.V_mean_range[0]:.0f}-" f"{gen_params.V_mean_range[1]:.0f} m/s")
     _log(f"  Shot mats     : {', '.join(gen_params.shot_materials)}")
     _log("=" * 66)
-
 
     t_start = time.perf_counter()
     results: List[Dict] = []
@@ -1239,10 +1263,7 @@ def generate_gaussian_dataset(
     else:
         # ---------- Parallel ----------
         with ProcessPoolExecutor(max_workers=gen_params.workers) as pool:
-            futures = {
-                pool.submit(run_gaussian_nozzle_simulation, si, gen_params): si
-                for si in indices
-            }
+            futures = {pool.submit(run_gaussian_nozzle_simulation, si, gen_params): si for si in indices}
             done = 0
             for future in as_completed(futures):
                 res = future.result()
@@ -1259,8 +1280,7 @@ def generate_gaussian_dataset(
                         )
                 else:
                     n_fail += 1
-                    print(f"  [{done:4d}/{n_total}] Sim_{res['sim_index']:04d}  "
-                          f"FAILED: {res['error']}")
+                    print(f"  [{done:4d}/{n_total}] Sim_{res['sim_index']:04d}  " f"FAILED: {res['error']}")
 
     elapsed = time.perf_counter() - t_start
     _write_summary_csv(
@@ -1269,8 +1289,7 @@ def generate_gaussian_dataset(
     )
 
     _log("=" * 66)
-    _log(f"Done.  {n_ok}/{n_total} OK,  {n_fail} failed  "
-         f"({elapsed:.0f} s total,  {elapsed/n_total:.1f} s/sim)")
+    _log(f"Done.  {n_ok}/{n_total} OK,  {n_fail} failed  " f"({elapsed:.0f} s total,  {elapsed/n_total:.1f} s/sim)")
     _log(f"Summary: {gen_params.output_dir}/dataset_summary.csv")
     _log("=" * 66)
 
@@ -1278,9 +1297,11 @@ def generate_gaussian_dataset(
     _log(f"\nCNN notes:")
     _log(f"  num_nodes        = {n_nodes}")
     _log(f"  checkerboard_size= {gen_params.checkerboard_size}")
-    _log(f"  FC input dim     = 128 x {gen_params.checkerboard_size} x "
-         f"{gen_params.checkerboard_size} = "
-         f"{128 * gen_params.checkerboard_size ** 2}")
+    _log(
+        f"  FC input dim     = 128 x {gen_params.checkerboard_size} x "
+        f"{gen_params.checkerboard_size} = "
+        f"{128 * gen_params.checkerboard_size ** 2}"
+    )
     _log(f"  Pass these to create_model() in model.py when retraining.\n")
 
     return results
@@ -1289,17 +1310,31 @@ def generate_gaussian_dataset(
 def _write_summary_csv(path: str, results: List[Dict]) -> None:
     """Write a CSV summary of all simulation results."""
     import csv
+
     fieldnames = [
-        "sim_index", "success",
-        "n_nodes", "n_elems",
-        "h_nozzle_mm", "theta_div_deg", "sigma_xy_mm",
-        "nozzle_x_mm", "nozzle_y_mm",
-        "V_mean_mps", "sigma_V_mps",
-        "V_normal_mean_mps", "V_normal_min_mps", "alpha_mean_deg",
-        "n_shots_target", "n_shots_actual",
-        "D_mm", "material", "sigma_yield_MPa",
-        "coverage_percent", "almen_MPa",
-        "elapsed_s", "error",
+        "sim_index",
+        "success",
+        "n_nodes",
+        "n_elems",
+        "h_nozzle_mm",
+        "theta_div_deg",
+        "sigma_xy_mm",
+        "nozzle_x_mm",
+        "nozzle_y_mm",
+        "V_mean_mps",
+        "sigma_V_mps",
+        "V_normal_mean_mps",
+        "V_normal_min_mps",
+        "alpha_mean_deg",
+        "n_shots_target",
+        "n_shots_actual",
+        "D_mm",
+        "material",
+        "sigma_yield_MPa",
+        "coverage_percent",
+        "almen_MPa",
+        "elapsed_s",
+        "error",
     ]
     with open(path, "w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
@@ -1311,6 +1346,7 @@ def _write_summary_csv(path: str, results: List[Dict]) -> None:
 # ---------------------------------------------------------------------------
 # 7.  Validation
 # ---------------------------------------------------------------------------
+
 
 def validate_gaussian_dataset(dataset_dir: str, n_check: int = 5) -> None:
     """Quick sanity-check on a generated Gaussian nozzle dataset.
@@ -1326,11 +1362,14 @@ def validate_gaussian_dataset(dataset_dir: str, n_check: int = 5) -> None:
     dataset_dir : Root directory of the generated dataset.
     n_check     : Number of simulations to inspect.
     """
-    sims = sorted([
-        d for d in os.listdir(dataset_dir)
-        if d.startswith("Simulation_") and
-        os.path.isdir(os.path.join(dataset_dir, d))
-    ], key=lambda x: int(x.split("_")[1]))
+    sims = sorted(
+        [
+            d
+            for d in os.listdir(dataset_dir)
+            if d.startswith("Simulation_") and os.path.isdir(os.path.join(dataset_dir, d))
+        ],
+        key=lambda x: int(x.split("_")[1]),
+    )
 
     if not sims:
         print(f"No Simulation_N/ folders found in: {dataset_dir}")
@@ -1344,11 +1383,16 @@ def validate_gaussian_dataset(dataset_dir: str, n_check: int = 5) -> None:
     print(f"  Checking {len(sample)} samples ...\n")
 
     required_files = [
-        "checkerboard.npy", "displacements.npy",
-        "node_coords.npy", "node_labels.npy",
-        "element_connectivity.npy", "element_labels.npy",
+        "checkerboard.npy",
+        "displacements.npy",
+        "node_coords.npy",
+        "node_labels.npy",
+        "element_connectivity.npy",
+        "element_labels.npy",
         "disp_node_labels.npy",
-        "shot_positions.npy", "shot_V_normal.npy", "shot_angles.npy",
+        "shot_positions.npy",
+        "shot_V_normal.npy",
+        "shot_angles.npy",
     ]
 
     all_ok = True
@@ -1369,11 +1413,11 @@ def validate_gaussian_dataset(dataset_dir: str, n_check: int = 5) -> None:
             continue
 
         # --- Load arrays ---
-        cb      = np.load(os.path.join(sim_dir, "checkerboard.npy"))
-        disp    = np.load(os.path.join(sim_dir, "displacements.npy"))
+        cb = np.load(os.path.join(sim_dir, "checkerboard.npy"))
+        disp = np.load(os.path.join(sim_dir, "displacements.npy"))
         centres = np.load(os.path.join(sim_dir, "shot_positions.npy"))
-        V_n     = np.load(os.path.join(sim_dir, "shot_V_normal.npy"))
-        alpha   = np.load(os.path.join(sim_dir, "shot_angles.npy"))
+        V_n = np.load(os.path.join(sim_dir, "shot_V_normal.npy"))
+        alpha = np.load(os.path.join(sim_dir, "shot_angles.npy"))
 
         # --- Shape checks ---
         if cb.ndim != 2:
@@ -1400,11 +1444,8 @@ def validate_gaussian_dataset(dataset_dir: str, n_check: int = 5) -> None:
         if G >= 6:
             c = G // 2
             r = max(1, G // 6)
-            centre_energy = cb[c-r:c+r+1, c-r:c+r+1].mean()
-            corner_energy = (
-                cb[:r, :r].mean() + cb[:r, -r:].mean() +
-                cb[-r:, :r].mean() + cb[-r:, -r:].mean()
-            ) / 4.0
+            centre_energy = cb[c - r : c + r + 1, c - r : c + r + 1].mean()
+            corner_energy = (cb[:r, :r].mean() + cb[:r, -r:].mean() + cb[-r:, :r].mean() + cb[-r:, -r:].mean()) / 4.0
             if centre_energy < corner_energy and len(centres) > 20:
                 # This can legitimately happen when the nozzle is off-centre
                 errors.append(
@@ -1417,11 +1458,13 @@ def validate_gaussian_dataset(dataset_dir: str, n_check: int = 5) -> None:
         status = "OK" if not errors else "WARN"
         if errors:
             all_ok = False
-        print(f"  {sim_name}: {status}  "
-              f"(N_shots={len(centres)}, "
-              f"V_n_mean={V_n.mean():.1f} m/s, "
-              f"alpha_mean={math.degrees(alpha.mean()):.1f} deg, "
-              f"CB shape={cb.shape})")
+        print(
+            f"  {sim_name}: {status}  "
+            f"(N_shots={len(centres)}, "
+            f"V_n_mean={V_n.mean():.1f} m/s, "
+            f"alpha_mean={math.degrees(alpha.mean()):.1f} deg, "
+            f"CB shape={cb.shape})"
+        )
         for e in errors:
             print(f"    -> {e}")
 
@@ -1445,62 +1488,52 @@ if __name__ == "__main__":
     )
 
     # Output
-    parser.add_argument("--output",   default="./Dataset_Gaussian",
-                        help="Root output directory (default: ./Dataset_Gaussian)")
-    parser.add_argument("--n_sims",   type=int, default=100,
-                        help="Number of simulation cases (default: 100)")
-    parser.add_argument("--start",    type=int, default=0,
-                        help="Starting simulation index (default: 0)")
-    parser.add_argument("--workers",  type=int, default=1,
-                        help="Parallel worker processes (default: 1 = sequential)")
-    parser.add_argument("--seed",     type=int, default=0,
-                        help="Master RNG seed (default: 0)")
+    parser.add_argument(
+        "--output", default="./Dataset_Gaussian", help="Root output directory (default: ./Dataset_Gaussian)"
+    )
+    parser.add_argument("--n_sims", type=int, default=100, help="Number of simulation cases (default: 100)")
+    parser.add_argument("--start", type=int, default=0, help="Starting simulation index (default: 0)")
+    parser.add_argument("--workers", type=int, default=1, help="Parallel worker processes (default: 1 = sequential)")
+    parser.add_argument("--seed", type=int, default=0, help="Master RNG seed (default: 0)")
 
     # Mesh
-    parser.add_argument("--Lx",  type=float, default=0.040,
-                        help="Plate X-dimension in metres (default: 0.040 = 40 mm)")
-    parser.add_argument("--Ly",  type=float, default=0.040,
-                        help="Plate Y-dimension in metres (default: 0.040 = 40 mm)")
-    parser.add_argument("--Nx",  type=int,   default=100,
-                        help="Quad elements in X (default: 100 → 101 nodes)")
-    parser.add_argument("--Ny",  type=int,   default=100,
-                        help="Quad elements in Y (default: 100 → 101 nodes)")
+    parser.add_argument("--Lx", type=float, default=0.040, help="Plate X-dimension in metres (default: 0.040 = 40 mm)")
+    parser.add_argument("--Ly", type=float, default=0.040, help="Plate Y-dimension in metres (default: 0.040 = 40 mm)")
+    parser.add_argument("--Nx", type=int, default=100, help="Quad elements in X (default: 100 → 101 nodes)")
+    parser.add_argument("--Ny", type=int, default=100, help="Quad elements in Y (default: 100 → 101 nodes)")
 
     # Nozzle geometry
-    parser.add_argument("--h_min",        type=float, default=0.050,
-                        help="Min nozzle standoff height (m, default 0.050)")
-    parser.add_argument("--h_max",        type=float, default=0.400,
-                        help="Max nozzle standoff height (m, default 0.400)")
-    parser.add_argument("--div_min_deg",  type=float, default=5.0,
-                        help="Min jet divergence half-angle (deg, default 5)")
-    parser.add_argument("--div_max_deg",  type=float, default=30.0,
-                        help="Max jet divergence half-angle (deg, default 30)")
+    parser.add_argument("--h_min", type=float, default=0.050, help="Min nozzle standoff height (m, default 0.050)")
+    parser.add_argument("--h_max", type=float, default=0.400, help="Max nozzle standoff height (m, default 0.400)")
+    parser.add_argument("--div_min_deg", type=float, default=5.0, help="Min jet divergence half-angle (deg, default 5)")
+    parser.add_argument(
+        "--div_max_deg", type=float, default=30.0, help="Max jet divergence half-angle (deg, default 30)"
+    )
 
     # Velocity
-    parser.add_argument("--V_min",  type=float, default=25.0,
-                        help="Min mean exit velocity (m/s, default 25)")
-    parser.add_argument("--V_max",  type=float, default=80.0,
-                        help="Max mean exit velocity (m/s, default 80)")
+    parser.add_argument("--V_min", type=float, default=25.0, help="Min mean exit velocity (m/s, default 25)")
+    parser.add_argument("--V_max", type=float, default=80.0, help="Max mean exit velocity (m/s, default 80)")
 
     # Shots
-    parser.add_argument("--n_shots_min", type=int,   default=30)
-    parser.add_argument("--n_shots_max", type=int,   default=200)
-    parser.add_argument("--D_min",       type=float, default=0.0003,
-                        help="Min shot diameter (m, default 0.0003 = 0.3 mm)")
-    parser.add_argument("--D_max",       type=float, default=0.0010,
-                        help="Max shot diameter (m, default 0.0010 = 1.0 mm)")
-    parser.add_argument("--materials",   nargs="+",
-                        default=["steel", "ceramic", "glass", "cast_iron"],
-                        choices=list(SHOT_MATERIALS.keys()),
-                        help="Shot materials to randomise over")
+    parser.add_argument("--n_shots_min", type=int, default=30)
+    parser.add_argument("--n_shots_max", type=int, default=200)
+    parser.add_argument("--D_min", type=float, default=0.0003, help="Min shot diameter (m, default 0.0003 = 0.3 mm)")
+    parser.add_argument("--D_max", type=float, default=0.0010, help="Max shot diameter (m, default 0.0010 = 1.0 mm)")
+    parser.add_argument(
+        "--materials",
+        nargs="+",
+        default=["steel", "ceramic", "glass", "cast_iron"],
+        choices=list(SHOT_MATERIALS.keys()),
+        help="Shot materials to randomise over",
+    )
 
     # Checkerboard
-    parser.add_argument("--grid_size",  type=int, default=20,
-                        help="Checkerboard grid resolution G (default: 20 → 20×20)")
+    parser.add_argument(
+        "--grid_size", type=int, default=20, help="Checkerboard grid resolution G (default: 20 → 20×20)"
+    )
 
     # Actions
-    parser.add_argument("--validate", action="store_true",
-                        help="Run validation checks after generation")
+    parser.add_argument("--validate", action="store_true", help="Run validation checks after generation")
 
     args = parser.parse_args()
 
@@ -1515,8 +1548,7 @@ if __name__ == "__main__":
         Nx=args.Nx,
         Ny=args.Ny,
         h_range=(args.h_min, args.h_max),
-        theta_div_range=(math.radians(args.div_min_deg),
-                         math.radians(args.div_max_deg)),
+        theta_div_range=(math.radians(args.div_min_deg), math.radians(args.div_max_deg)),
         V_mean_range=(args.V_min, args.V_max),
         n_shots_range=(args.n_shots_min, args.n_shots_max),
         D_range=(args.D_min, args.D_max),
@@ -1528,10 +1560,12 @@ if __name__ == "__main__":
     n_nodes = (gp.Nx + 1) * (gp.Ny + 1)
     n_shots_mid = sum(gp.n_shots_range) // 2
     est_s = 0.0005e-3 * n_nodes * n_shots_mid  # rough: 0.5 us per node x shot
-    print(f"\nEstimated time per simulation: {est_s:.1f} s "
-          f"({n_nodes} nodes x {n_shots_mid} shots x 0.5 us/node/shot)")
-    print(f"Estimated total time: {gp.n_simulations * est_s / max(1, gp.workers):.0f} s "
-          f"with {gp.workers} worker(s)\n")
+    print(
+        f"\nEstimated time per simulation: {est_s:.1f} s " f"({n_nodes} nodes x {n_shots_mid} shots x 0.5 us/node/shot)"
+    )
+    print(
+        f"Estimated total time: {gp.n_simulations * est_s / max(1, gp.workers):.0f} s " f"with {gp.workers} worker(s)\n"
+    )
 
     generate_gaussian_dataset(gp, verbose=True)
 

@@ -18,6 +18,7 @@ params = ScanParams(
 traj = raster_scan(params)
 print(traj)   # NozzleTrajectory(steps=..., dt=0.0100s, total_time=...s)
 """
+
 from __future__ import annotations
 
 import csv
@@ -53,13 +54,14 @@ class ScanParams:
     dt           : Time step between output positions (s). Finer dt → more
                    nozzle positions → more shot-sampling calls per simulation.
     """
-    pattern:      str   = "raster"
-    Lx:           float = 0.040
-    Ly:           float = 0.040
-    z_standoff:   float = 0.100
-    scan_speed:   float = 0.050
+
+    pattern: str = "raster"
+    Lx: float = 0.040
+    Ly: float = 0.040
+    z_standoff: float = 0.100
+    scan_speed: float = 0.050
     line_spacing: float = 0.005
-    dt:           float = 0.010
+    dt: float = 0.010
 
 
 class NozzleTrajectory:
@@ -74,11 +76,9 @@ class NozzleTrajectory:
     def __init__(self, positions: np.ndarray, dt: float = 0.01) -> None:
         positions = np.asarray(positions, dtype=np.float32)
         if positions.ndim != 2 or positions.shape[1] != 3:
-            raise ValueError(
-                f"positions must be (T, 3), got shape {positions.shape}"
-            )
+            raise ValueError(f"positions must be (T, 3), got shape {positions.shape}")
         self.positions = positions
-        self.dt        = float(dt)
+        self.dt = float(dt)
 
     @property
     def n_steps(self) -> int:
@@ -89,15 +89,13 @@ class NozzleTrajectory:
         return self.n_steps * self.dt
 
     def __repr__(self) -> str:
-        return (
-            f"NozzleTrajectory(steps={self.n_steps}, dt={self.dt:.4f}s, "
-            f"total_time={self.total_time:.2f}s)"
-        )
+        return f"NozzleTrajectory(steps={self.n_steps}, dt={self.dt:.4f}s, " f"total_time={self.total_time:.2f}s)"
 
 
 # ---------------------------------------------------------------------------
 # Built-in parametric patterns
 # ---------------------------------------------------------------------------
+
 
 def raster_scan(params: ScanParams) -> NozzleTrajectory:
     """Boustrophedon (serpentine) raster scan over [0, Lx] × [0, Ly].
@@ -115,8 +113,8 @@ def raster_scan(params: ScanParams) -> NozzleTrajectory:
     """
     positions: List[np.ndarray] = []
     n_lines = max(1, math.ceil(params.Ly / params.line_spacing) + 1)
-    z       = params.z_standoff
-    step_m  = params.scan_speed * params.dt
+    z = params.z_standoff
+    step_m = params.scan_speed * params.dt
 
     for i in range(n_lines):
         y = min(i * params.line_spacing, params.Ly)
@@ -146,21 +144,18 @@ def zigzag_scan(params: ScanParams) -> NozzleTrajectory:
     NozzleTrajectory
     """
     positions: List[np.ndarray] = []
-    z       = params.z_standoff
-    step_m  = params.scan_speed * params.dt * math.cos(math.radians(45.0))
+    z = params.z_standoff
+    step_m = params.scan_speed * params.dt * math.cos(math.radians(45.0))
     n_lines = max(1, math.ceil(params.Ly / params.line_spacing) + 1)
 
     for i in range(n_lines):
-        y_base  = min(i * params.line_spacing, params.Ly)
+        y_base = min(i * params.line_spacing, params.Ly)
         n_steps = max(1, math.ceil(params.Lx / max(step_m, 1e-9)))
-        xs      = np.linspace(0.0, params.Lx, n_steps + 1)
+        xs = np.linspace(0.0, params.Lx, n_steps + 1)
         if i % 2 != 0:
             xs = xs[::-1]
         for x in xs:
-            positions.append(
-                np.array([float(x), float(np.clip(y_base, 0.0, params.Ly)), z],
-                         dtype=np.float32)
-            )
+            positions.append(np.array([float(x), float(np.clip(y_base, 0.0, params.Ly)), z], dtype=np.float32))
 
     return NozzleTrajectory(np.stack(positions), dt=params.dt)
 
@@ -180,24 +175,24 @@ def spiral_scan(params: ScanParams) -> NozzleTrajectory:
     NozzleTrajectory
     """
     positions: List[np.ndarray] = []
-    z      = params.z_standoff
+    z = params.z_standoff
     step_m = max(params.scan_speed * params.dt, 1e-9)
-    cx     = params.Lx / 2.0
-    cy     = params.Ly / 2.0
-    sp     = params.line_spacing
-    hx, hy = cx, cy           # current half-widths of the rectangle
+    cx = params.Lx / 2.0
+    cy = params.Ly / 2.0
+    sp = params.line_spacing
+    hx, hy = cx, cy  # current half-widths of the rectangle
 
     while hx > sp / 2.0 and hy > sp / 2.0:
         x0, x1 = cx - hx, cx + hx
         y0, y1 = cy - hy, cy + hy
 
-        for x in np.arange(x0, x1, step_m):          # bottom left → right
+        for x in np.arange(x0, x1, step_m):  # bottom left → right
             positions.append(np.array([float(np.clip(x, x0, x1)), y0, z], dtype=np.float32))
-        for y in np.arange(y0, y1, step_m):           # right bottom → top
+        for y in np.arange(y0, y1, step_m):  # right bottom → top
             positions.append(np.array([x1, float(np.clip(y, y0, y1)), z], dtype=np.float32))
-        for x in np.arange(x1, x0, -step_m):         # top right → left
+        for x in np.arange(x1, x0, -step_m):  # top right → left
             positions.append(np.array([float(np.clip(x, x0, x1)), y1, z], dtype=np.float32))
-        for y in np.arange(y1, y0, -step_m):          # left top → bottom
+        for y in np.arange(y1, y0, -step_m):  # left top → bottom
             positions.append(np.array([x0, float(np.clip(y, y0, y1)), z], dtype=np.float32))
 
         hx = max(0.0, hx - sp)
@@ -212,6 +207,7 @@ def spiral_scan(params: ScanParams) -> NozzleTrajectory:
 # ---------------------------------------------------------------------------
 # File loaders
 # ---------------------------------------------------------------------------
+
 
 def from_csv(path: str, z_standoff: Optional[float] = None) -> NozzleTrajectory:
     """Load a nozzle trajectory from a CSV file.
@@ -232,7 +228,7 @@ def from_csv(path: str, z_standoff: Optional[float] = None) -> NozzleTrajectory:
     """
     with open(path, newline="") as fh:
         reader = csv.DictReader(fh)
-        rows   = list(reader)
+        rows = list(reader)
 
     if not rows:
         raise ValueError(f"CSV file is empty: {path}")
@@ -253,14 +249,12 @@ def from_csv(path: str, z_standoff: Optional[float] = None) -> NozzleTrajectory:
         elif z_standoff is not None:
             zs.append(float(z_standoff))
         else:
-            raise ValueError(
-                "CSV has no 'z' column and z_standoff was not provided."
-            )
+            raise ValueError("CSV has no 'z' column and z_standoff was not provided.")
         if "t" in row:
             ts.append(_get(row, "t"))
 
     positions = np.stack([xs, ys, zs], axis=1).astype(np.float32)
-    dt        = float(np.median(np.diff(ts))) if len(ts) > 1 else 0.01
+    dt = float(np.median(np.diff(ts))) if len(ts) > 1 else 0.01
     return NozzleTrajectory(positions, dt=dt)
 
 
@@ -287,23 +281,19 @@ def from_npy(path: str, z_standoff: Optional[float] = None) -> NozzleTrajectory:
         raise ValueError(f"npy trajectory must be 2D, got shape {arr.shape}: {path}")
 
     if arr.shape[1] == 4:
-        ts        = arr[:, 3]
+        ts = arr[:, 3]
         positions = arr[:, :3].astype(np.float32)
-        dt        = float(np.median(np.diff(ts))) if len(ts) > 1 else 0.01
+        dt = float(np.median(np.diff(ts))) if len(ts) > 1 else 0.01
     elif arr.shape[1] == 3:
         positions = arr.astype(np.float32)
-        dt        = 0.01
+        dt = 0.01
     elif arr.shape[1] == 2:
         if z_standoff is None:
-            raise ValueError(
-                "npy file has only 2 columns (x, y) — z_standoff is required."
-            )
-        z_col     = np.full((len(arr), 1), float(z_standoff), dtype=np.float32)
+            raise ValueError("npy file has only 2 columns (x, y) — z_standoff is required.")
+        z_col = np.full((len(arr), 1), float(z_standoff), dtype=np.float32)
         positions = np.hstack([arr.astype(np.float32), z_col])
-        dt        = 0.01
+        dt = 0.01
     else:
-        raise ValueError(
-            f"npy trajectory must have 2, 3, or 4 columns; got {arr.shape[1]}: {path}"
-        )
+        raise ValueError(f"npy trajectory must have 2, 3, or 4 columns; got {arr.shape[1]}: {path}")
 
     return NozzleTrajectory(positions, dt=dt)

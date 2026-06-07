@@ -32,7 +32,7 @@ from pathlib import Path
 import numpy as np
 
 _HERE = Path(__file__).resolve().parent
-_SRC  = _HERE / "src" / "peen-ml"
+_SRC = _HERE / "src" / "peen-ml"
 for _p in [str(_SRC), str(_HERE)]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -65,24 +65,24 @@ def _backfill_one(sim_dir: str, checkerboard_size: int = None) -> dict:
             return {"sim": sd.name, "ok": False, "error": "no simulation_params.txt"}
         p = _parse_params(str(params_path))
 
-        V   = float(p.get("V_m_per_s", 40.0))
-        D   = float(p.get("D_mm", 0.6)) * 1e-3
-        Lx  = float(p.get("Lx_mm", 10.0)) * 1e-3
-        Ly  = float(p.get("Ly_mm", 10.0)) * 1e-3
+        V = float(p.get("V_m_per_s", 40.0))
+        D = float(p.get("D_mm", 0.6)) * 1e-3
+        Lx = float(p.get("Lx_mm", 10.0)) * 1e-3
+        Ly = float(p.get("Ly_mm", 10.0)) * 1e-3
         E_b = float(p.get("E_b", 1.138e11))
         nu_b = float(p.get("nu_b", 0.342))
-        sy   = float(p.get("sigma_yield", 8.8e8))
-        c    = float(p.get("c", 3.0e9))
-        E_s  = float(p.get("E_s", 2.1e11))
+        sy = float(p.get("sigma_yield", 8.8e8))
+        c = float(p.get("c", 3.0e9))
+        E_s = float(p.get("E_s", 2.1e11))
         nu_s = float(p.get("nu_s", 0.30))
         rho_s = float(p.get("rho_s", 7800.0))
-        t_plate = 0.003   # 3 mm default
+        t_plate = 0.003  # 3 mm default
 
         # ---- Shot positions ----
         shot_path = sd / "shot_positions.npy"
         if not shot_path.exists():
             return {"sim": sd.name, "ok": False, "error": "no shot_positions.npy"}
-        centres = np.load(str(shot_path))   # (M, 2)
+        centres = np.load(str(shot_path))  # (M, 2)
         n_shots = len(centres)
 
         # ---- Compute per-shot physics (same V,D for all — V_scatter is small) ----
@@ -90,19 +90,26 @@ def _backfill_one(sim_dir: str, checkerboard_size: int = None) -> dict:
         from multi_shot_sim import compute_influence_fields
 
         p_i = ShotPeenParams(
-            E_s=E_s, nu_s=nu_s, D=D, rho_s=rho_s,
-            E_b=E_b, nu_b=nu_b, sigma_yield=sy, c=c,
-            V=V, n_depth=1000,
+            E_s=E_s,
+            nu_s=nu_s,
+            D=D,
+            rho_s=rho_s,
+            E_b=E_b,
+            nu_b=nu_b,
+            sigma_yield=sy,
+            c=c,
+            V=V,
+            n_depth=1000,
         )
         contact_i = compute_contact_params(p_i)
         plastic_i = compute_plastic_zone(p_i)
-        sf_i      = compute_stress_field(contact_i, p_i)
+        sf_i = compute_stress_field(contact_i, p_i)
 
-        a_p  = plastic_i["a_p"]
-        r_p  = plastic_i["r_p"]
-        R    = p_i.R
-        Vn   = p_i.Vn
-        delta_p = a_p ** 2 / (2.0 * R) if R > 0 else 0.0
+        a_p = plastic_i["a_p"]
+        r_p = plastic_i["r_p"]
+        R = p_i.R
+        Vn = p_i.Vn
+        delta_p = a_p**2 / (2.0 * R) if R > 0 else 0.0
         sigma_R_surface = float(sf_i["sR"][0]) if len(sf_i["sR"]) > 0 else 0.0
         sR_depth = np.stack([sf_i["Z"], sf_i["sR"]], axis=1)  # (K, 2)
 
@@ -113,8 +120,8 @@ def _backfill_one(sim_dir: str, checkerboard_size: int = None) -> dict:
         else:
             bm_per_shot = 0.0
 
-        vol_shot = math.pi * D ** 3 / 6.0
-        ke_per_shot = 0.5 * rho_s * Vn ** 2 * vol_shot
+        vol_shot = math.pi * D**3 / 6.0
+        ke_per_shot = 0.5 * rho_s * Vn**2 * vol_shot
 
         # ---- Build physics checkerboard ----
         # Determine G (checkerboard grid size) from existing checkerboard.npy
@@ -124,36 +131,35 @@ def _backfill_one(sim_dir: str, checkerboard_size: int = None) -> dict:
         elif checkerboard_size is not None:
             G = checkerboard_size
         else:
-            G = 10   # LargeScaleRun1 default
+            G = 10  # LargeScaleRun1 default
 
         cell_w = Lx / G
         cell_h = Ly / G
         A_cell = cell_w * cell_h
 
-        n_shots_grid   = np.zeros((G, G), dtype=np.float64)
-        energy_grid    = np.zeros((G, G), dtype=np.float64)
-        dent_grid      = np.zeros((G, G), dtype=np.float64)
-        stress_grid    = np.zeros((G, G), dtype=np.float64)
-        rp2_grid       = np.zeros((G, G), dtype=np.float64)
-        bimoment_grid  = np.zeros((G, G), dtype=np.float64)
+        n_shots_grid = np.zeros((G, G), dtype=np.float64)
+        energy_grid = np.zeros((G, G), dtype=np.float64)
+        dent_grid = np.zeros((G, G), dtype=np.float64)
+        stress_grid = np.zeros((G, G), dtype=np.float64)
+        rp2_grid = np.zeros((G, G), dtype=np.float64)
+        bimoment_grid = np.zeros((G, G), dtype=np.float64)
 
         for c_xy in centres:
             col = min(G - 1, int(c_xy[0] / cell_w))
             row = min(G - 1, int(c_xy[1] / cell_h))
-            n_shots_grid[row, col]  += 1.0
-            energy_grid[row, col]   += ke_per_shot
-            dent_grid[row, col]     += delta_p
-            stress_grid[row, col]   += abs(sigma_R_surface)
-            rp2_grid[row, col]      += r_p ** 2
+            n_shots_grid[row, col] += 1.0
+            energy_grid[row, col] += ke_per_shot
+            dent_grid[row, col] += delta_p
+            stress_grid[row, col] += abs(sigma_R_surface)
+            rp2_grid[row, col] += r_p**2
             bimoment_grid[row, col] += bm_per_shot
 
-        coverage_grid  = 1.0 - np.exp(-math.pi * rp2_grid / A_cell)
-        energy_grid   /= A_cell
-        stress_grid   /= A_cell
+        coverage_grid = 1.0 - np.exp(-math.pi * rp2_grid / A_cell)
+        energy_grid /= A_cell
+        stress_grid /= A_cell
         bimoment_grid /= A_cell
 
-        raw = np.stack([n_shots_grid, energy_grid, dent_grid,
-                        stress_grid, coverage_grid, bimoment_grid], axis=0)
+        raw = np.stack([n_shots_grid, energy_grid, dent_grid, stress_grid, coverage_grid, bimoment_grid], axis=0)
         phys_cb = np.zeros_like(raw, dtype=np.float32)
         for ch in range(6):
             mn, mx = raw[ch].min(), raw[ch].max()
@@ -169,20 +175,20 @@ def _backfill_one(sim_dir: str, checkerboard_size: int = None) -> dict:
             Nx_inferred = len(np.unique(np.round(nc_arr[:, 0], 8))) - 1
             Ny_inferred = len(np.unique(np.round(nc_arr[:, 1], 8))) - 1
             inf_fields = compute_influence_fields(
-                shot_positions = centres,
-                node_coords    = nc_arr,
-                a_p            = a_p,
-                r_p            = r_p,
-                delta_p        = delta_p,
-                Nx             = Nx_inferred,
-                Ny             = Ny_inferred,
+                shot_positions=centres,
+                node_coords=nc_arr,
+                a_p=a_p,
+                r_p=r_p,
+                delta_p=delta_p,
+                Nx=Nx_inferred,
+                Ny=Ny_inferred,
             )
             np.save(str(sd / "influence_fields.npy"), inf_fields)
 
         # ---- Cupping from saved depth profile ----
         sR_path = sd / "sR_depth_profile.npy"
         if sR_path.exists():
-            sR_mean = np.load(str(sR_path))   # (L, 2): [depth, sigma_R]
+            sR_mean = np.load(str(sR_path))  # (L, 2): [depth, sigma_R]
             if sR_mean.shape[0] > 1:
                 z_arr = sR_mean[:, 0]
                 sr_arr = sR_mean[:, 1]
@@ -190,9 +196,9 @@ def _backfill_one(sim_dir: str, checkerboard_size: int = None) -> dict:
                 if mask.sum() < 2:
                     mask = np.ones(len(z_arr), dtype=bool)
                 M_b = float(np.trapz(sr_arr[mask] * z_arr[mask], z_arr[mask]))
-                I_per_w = t_plate ** 3 / 12.0
+                I_per_w = t_plate**3 / 12.0
                 kappa = M_b / (E_b * I_per_w) if E_b > 0 else 0.0
-                cupping = kappa * Lx ** 2 / 8.0
+                cupping = kappa * Lx**2 / 8.0
             else:
                 cupping = 0.0
         else:
@@ -201,16 +207,16 @@ def _backfill_one(sim_dir: str, checkerboard_size: int = None) -> dict:
 
         # ---- Nodal stresses from element stresses + connectivity ----
         stress_path = sd / "stresses.npy"
-        conn_path   = sd / "element_connectivity.npy"
-        nc_path     = sd / "node_coords.npy"
+        conn_path = sd / "element_connectivity.npy"
+        nc_path = sd / "node_coords.npy"
         if stress_path.exists() and conn_path.exists() and nc_path.exists():
-            elem_stress = np.load(str(stress_path))    # (N_elems, 4)
-            conn        = np.load(str(conn_path))       # (N_elems, 4)
-            n_nodes     = len(np.load(str(nc_path)))   # use node_coords count
+            elem_stress = np.load(str(stress_path))  # (N_elems, 4)
+            conn = np.load(str(conn_path))  # (N_elems, 4)
+            n_nodes = len(np.load(str(nc_path)))  # use node_coords count
 
             n_comp = elem_stress.shape[1]
-            accum  = np.zeros((n_nodes, n_comp), dtype=np.float64)
-            count  = np.zeros(n_nodes, dtype=np.float64)
+            accum = np.zeros((n_nodes, n_comp), dtype=np.float64)
+            count = np.zeros(n_nodes, dtype=np.float64)
             for e_idx, nodes_row in enumerate(conn):
                 for n_idx in nodes_row:
                     if 0 <= n_idx < n_nodes:
@@ -222,23 +228,26 @@ def _backfill_one(sim_dir: str, checkerboard_size: int = None) -> dict:
             np.save(str(sd / "nodal_stresses.npy"), nodal)
 
         return {
-            "sim": sd.name, "ok": True,
-            "n_shots": n_shots, "G": G,
+            "sim": sd.name,
+            "ok": True,
+            "n_shots": n_shots,
+            "G": G,
             "cupping_um": cupping * 1e6,
             "elapsed_s": time.perf_counter() - t0,
         }
 
     except Exception as exc:
-        return {"sim": sd.name, "ok": False, "error": str(exc),
-                "elapsed_s": time.perf_counter() - t0}
+        return {"sim": sd.name, "ok": False, "error": str(exc), "elapsed_s": time.perf_counter() - t0}
 
 
 def backfill_dataset(dataset_dir: str, workers: int = 4, force: bool = False):
     ds = Path(dataset_dir)
     sim_dirs = sorted(
-        [d for d in ds.iterdir()
-         if d.is_dir() and d.name.startswith("Simulation_")
-         and d.name[len("Simulation_"):].isdigit()],
+        [
+            d
+            for d in ds.iterdir()
+            if d.is_dir() and d.name.startswith("Simulation_") and d.name[len("Simulation_") :].isdigit()
+        ],
         key=lambda x: int(x.name.split("_")[1]),
     )
     total = len(sim_dirs)
@@ -251,7 +260,7 @@ def backfill_dataset(dataset_dir: str, workers: int = 4, force: bool = False):
     for sd in sim_dirs:
         if not force:
             has_phys = (sd / "checkerboard_physics.npy").exists()
-            has_inf  = (sd / "influence_fields.npy").exists()
+            has_inf = (sd / "influence_fields.npy").exists()
             if has_phys and has_inf:
                 skipped += 1
                 continue
@@ -277,8 +286,7 @@ def backfill_dataset(dataset_dir: str, workers: int = 4, force: bool = False):
                 n_fail += 1
                 print(f"  FAIL {r['sim']}: {r.get('error','?')}")
             if i % max(1, len(to_process) // 10) == 0:
-                print(f"  {i}/{len(to_process)}  ok={n_ok}  fail={n_fail}  "
-                      f"({time.perf_counter()-t0:.0f}s)")
+                print(f"  {i}/{len(to_process)}  ok={n_ok}  fail={n_fail}  " f"({time.perf_counter()-t0:.0f}s)")
     else:
         with ProcessPoolExecutor(max_workers=workers) as ex:
             futures = {ex.submit(_backfill_one, sd): sd for sd in to_process}
@@ -290,8 +298,7 @@ def backfill_dataset(dataset_dir: str, workers: int = 4, force: bool = False):
                     n_fail += 1
                     print(f"  FAIL {r['sim']}: {r.get('error','?')}")
                 if i % max(1, len(to_process) // 10) == 0:
-                    print(f"  {i}/{len(to_process)}  ok={n_ok}  fail={n_fail}  "
-                          f"({time.perf_counter()-t0:.0f}s)")
+                    print(f"  {i}/{len(to_process)}  ok={n_ok}  fail={n_fail}  " f"({time.perf_counter()-t0:.0f}s)")
 
     elapsed = time.perf_counter() - t0
     print(f"\nBackfill complete: {n_ok} OK  {n_fail} failed  ({elapsed:.1f}s total)")
@@ -301,7 +308,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", required=True, help="Dataset directory path")
     parser.add_argument("--workers", type=int, default=4)
-    parser.add_argument("--force", action="store_true",
-                        help="Re-compute even if files already exist")
+    parser.add_argument("--force", action="store_true", help="Re-compute even if files already exist")
     args = parser.parse_args()
     backfill_dataset(args.dataset, args.workers, args.force)

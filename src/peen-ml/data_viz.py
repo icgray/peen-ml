@@ -76,22 +76,17 @@ def load_data(file_path, description=""):
 def visualize_checkerboard(simulation_folder):
     """Visualize the checkerboard pattern."""
     try:
-        checkerboard_path = os.path.join(simulation_folder, 'checkerboard.npy')
+        checkerboard_path = os.path.join(simulation_folder, "checkerboard.npy")
         checkerboard = load_data(checkerboard_path, "checkerboard")
         if checkerboard is None:
             return
 
         plt.figure(figsize=(6, 6))
-        plt.imshow(
-            checkerboard,
-            cmap='viridis',
-            origin='lower',
-            extent=[0, 1, 0, 1]
-        )
-        plt.colorbar(label='Expansion Coefficient')
-        plt.title('Checkerboard Pattern of Expansion Coefficients')
-        plt.xlabel('X Position (m)')
-        plt.ylabel('Y Position (m)')
+        plt.imshow(checkerboard, cmap="viridis", origin="lower", extent=[0, 1, 0, 1])
+        plt.colorbar(label="Expansion Coefficient")
+        plt.title("Checkerboard Pattern of Expansion Coefficients")
+        plt.xlabel("X Position (m)")
+        plt.ylabel("Y Position (m)")
         plt.grid(False)
         plt.show()
     except Exception as e:  # pylint: disable=broad-except
@@ -101,21 +96,11 @@ def visualize_checkerboard(simulation_folder):
 def compute_deformed_mesh(simulation_folder, scale_factor=1):
     """Compute the deformed mesh coordinates."""
     try:
-        node_coords = load_data(
-            os.path.join(simulation_folder, 'node_coords.npy'),
-            "node coordinates"
-        )
-        node_labels = load_data(
-            os.path.join(simulation_folder, 'node_labels.npy'),
-            "node labels"
-        )
-        displacements = load_data(
-            os.path.join(simulation_folder, 'displacements.npy'),
-            "displacements"
-        )
+        node_coords = load_data(os.path.join(simulation_folder, "node_coords.npy"), "node coordinates")
+        node_labels = load_data(os.path.join(simulation_folder, "node_labels.npy"), "node labels")
+        displacements = load_data(os.path.join(simulation_folder, "displacements.npy"), "displacements")
         disp_node_labels = load_data(
-            os.path.join(simulation_folder, 'disp_node_labels.npy'),
-            "displacement node labels"
+            os.path.join(simulation_folder, "disp_node_labels.npy"), "displacement node labels"
         )
 
         if any(obj is None for obj in [node_coords, node_labels, displacements, disp_node_labels]):
@@ -132,17 +117,13 @@ def compute_deformed_mesh(simulation_folder, scale_factor=1):
         deformed_coords = node_coords + scale_factor * aligned_displacements
 
         element_connectivity = load_data(
-            os.path.join(simulation_folder, 'element_connectivity.npy'),
-            "element connectivity"
+            os.path.join(simulation_folder, "element_connectivity.npy"), "element connectivity"
         )
         if element_connectivity is None:
             print("Element connectivity file is missing.")
             return None, None, None
 
-        element_nodes = [
-            [node_label_to_index[label] for label in elem]
-            for elem in element_connectivity
-        ]
+        element_nodes = [[node_label_to_index[label] for label in elem] for elem in element_connectivity]
 
         return node_coords, deformed_coords, element_nodes
     except Exception as e:  # pylint: disable=broad-except
@@ -153,6 +134,7 @@ def compute_deformed_mesh(simulation_folder, scale_factor=1):
 def visualize_mesh(node_coords, deformed_coords, element_nodes):
     """Visualize the undeformed and deformed mesh."""
     try:
+
         def create_mesh_lines(coords, elements):
             lines = []
             for elem in elements:
@@ -167,16 +149,16 @@ def visualize_mesh(node_coords, deformed_coords, element_nodes):
         deformed_lines = create_mesh_lines(deformed_coords, element_nodes)
 
         _, ax = plt.subplots(figsize=(10, 10))
-        lc_undeformed = mc.LineCollection(undeformed_lines, colors='gray', linewidths=0.5)
-        lc_deformed = mc.LineCollection(deformed_lines, colors='blue', linewidths=0.5)
+        lc_undeformed = mc.LineCollection(undeformed_lines, colors="gray", linewidths=0.5)
+        lc_deformed = mc.LineCollection(deformed_lines, colors="blue", linewidths=0.5)
         ax.add_collection(lc_undeformed)
         ax.add_collection(lc_deformed)
         ax.set_xlim([0, 1])
         ax.set_ylim([0, 1])
-        ax.set_aspect('equal')
-        ax.set_title('Undeformed (gray) and Deformed (blue) Mesh')
-        ax.set_xlabel('X Position (m)')
-        ax.set_ylabel('Y Position (m)')
+        ax.set_aspect("equal")
+        ax.set_title("Undeformed (gray) and Deformed (blue) Mesh")
+        ax.set_xlabel("X Position (m)")
+        ax.set_ylabel("Y Position (m)")
         plt.show()
     except Exception as e:  # pylint: disable=broad-except
         print(f"Error visualizing mesh: {e}")
@@ -185,10 +167,9 @@ def visualize_mesh(node_coords, deformed_coords, element_nodes):
 def visualize_stress_field(simulation_folder, deformed_coords, element_nodes):
     """Visualize the stress field on the deformed mesh."""
     try:
-        stresses = load_data(os.path.join(simulation_folder, 'stresses.npy'), "stresses")
+        stresses = load_data(os.path.join(simulation_folder, "stresses.npy"), "stresses")
         stress_element_labels = load_data(
-            os.path.join(simulation_folder, 'stress_element_labels.npy'),
-            "stress element labels"
+            os.path.join(simulation_folder, "stress_element_labels.npy"), "stress element labels"
         )
         if stresses is None or stress_element_labels is None:
             return
@@ -206,20 +187,16 @@ def visualize_stress_field(simulation_folder, deformed_coords, element_nodes):
             element_stress_values.append(element_label_to_stress.get(elem_label, 0))
 
         collection = PolyCollection(
-            element_polygons,
-            array=np.array(element_stress_values),
-            cmap='jet',
-            edgecolors='k',
-            linewidths=0.5
+            element_polygons, array=np.array(element_stress_values), cmap="jet", edgecolors="k", linewidths=0.5
         )
         _, ax = plt.subplots(figsize=(10, 10))
         ax.add_collection(collection)
         ax.autoscale_view()
-        ax.set_aspect('equal')
-        plt.colorbar(collection, ax=ax, label='Von Mises Stress (Pa)')
-        ax.set_title('Stress Field on Deformed Mesh')
-        ax.set_xlabel('X Position (m)')
-        ax.set_ylabel('Y Position (m)')
+        ax.set_aspect("equal")
+        plt.colorbar(collection, ax=ax, label="Von Mises Stress (Pa)")
+        ax.set_title("Stress Field on Deformed Mesh")
+        ax.set_xlabel("X Position (m)")
+        ax.set_ylabel("Y Position (m)")
         plt.show()
     except Exception as e:  # pylint: disable=broad-except
         print(f"Error visualizing stress field: {e}")
@@ -230,33 +207,26 @@ def visualize_deformation(_, deformed_coords, element_nodes, aligned_displacemen
     try:
         deformation_magnitude = np.linalg.norm(aligned_displacements, axis=1)
 
-        element_deformation_values = [
-            deformation_magnitude[elem_indices].mean() for elem_indices in element_nodes
-        ]
+        element_deformation_values = [deformation_magnitude[elem_indices].mean() for elem_indices in element_nodes]
 
-        element_polygons = [
-            deformed_coords[elem_indices][:, :2] for elem_indices in element_nodes
-        ]
+        element_polygons = [deformed_coords[elem_indices][:, :2] for elem_indices in element_nodes]
 
         collection_def = PolyCollection(
-            element_polygons,
-            array=np.array(element_deformation_values),
-            cmap='plasma',
-            edgecolors='k',
-            linewidths=0.5
+            element_polygons, array=np.array(element_deformation_values), cmap="plasma", edgecolors="k", linewidths=0.5
         )
 
         _, ax = plt.subplots(figsize=(10, 10))
         ax.add_collection(collection_def)
         ax.autoscale_view()
-        ax.set_aspect('equal')
-        plt.colorbar(collection_def, ax=ax, label='Deformation Magnitude (m)')
-        ax.set_title('Deformation Magnitude on Deformed Mesh')
-        ax.set_xlabel('X Position (m)')
-        ax.set_ylabel('Y Position (m)')
+        ax.set_aspect("equal")
+        plt.colorbar(collection_def, ax=ax, label="Deformation Magnitude (m)")
+        ax.set_title("Deformation Magnitude on Deformed Mesh")
+        ax.set_xlabel("X Position (m)")
+        ax.set_ylabel("Y Position (m)")
         plt.show()
     except Exception as e:  # pylint: disable=broad-except
         print(f"Error visualizing deformation: {e}")
+
 
 def visualize_all(folder_path, scale_factor):
     """
@@ -269,9 +239,7 @@ def visualize_all(folder_path, scale_factor):
     visualize_checkerboard(folder_path)
 
     print("Step 2: Computing Deformed Mesh...")
-    node_coords, deformed_coords, element_nodes = compute_deformed_mesh(
-        folder_path, scale_factor
-    )
+    node_coords, deformed_coords, element_nodes = compute_deformed_mesh(folder_path, scale_factor)
 
     # Check if any of the required outputs are None
     if any(obj is None for obj in [node_coords, deformed_coords, element_nodes]):
@@ -282,27 +250,23 @@ def visualize_all(folder_path, scale_factor):
     visualize_mesh(node_coords, deformed_coords, element_nodes)
 
     print("Step 4: Visualizing Stress Field on Deformed Mesh...")
-    visualize_stress_field(folder_path,
-                            deformed_coords,
-                                element_nodes)
+    visualize_stress_field(folder_path, deformed_coords, element_nodes)
 
     print("Step 5: Visualizing Deformation Magnitude on Deformed Mesh...")
     aligned_displacements = deformed_coords - node_coords
-    visualize_deformation(folder_path,
-                            deformed_coords,
-                            element_nodes,
-                                aligned_displacements)
+    visualize_deformation(folder_path, deformed_coords, element_nodes, aligned_displacements)
 
 
 def main():
     """Main function to execute all visualization steps."""
     # Path to the simulation folder
-    #simulation_folder = (r'\tests\simulation_0')
-    simulation_folder = os.path.join(os.getcwd(), 'tests', 'simulation_0')
+    # simulation_folder = (r'\tests\simulation_0')
+    simulation_folder = os.path.join(os.getcwd(), "tests", "simulation_0")
 
     # Deformation scale (adjust as needed)
     scale_factor = 1
     visualize_all(simulation_folder, scale_factor)
+
 
 if __name__ == "__main__":
     main()
@@ -312,8 +276,8 @@ if __name__ == "__main__":
 # 3D STL surface visualisation
 # ---------------------------------------------------------------------------
 
-def visualize_stl_deformation(stl_surface, displacements, colormap="plasma",
-                              scale_factor=1.0, show=True):
+
+def visualize_stl_deformation(stl_surface, displacements, colormap="plasma", scale_factor=1.0, show=True):
     """Render deformation magnitude on a 3D STL surface as a colour map.
 
     Parameters
@@ -328,38 +292,36 @@ def visualize_stl_deformation(stl_surface, displacements, colormap="plasma",
     -------
     fig : matplotlib Figure
     """
-    from mpl_toolkits.mplot3d import Axes3D    # noqa: F401
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
     from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-    vertices      = stl_surface.vertices.astype(np.float64)
-    disp          = np.asarray(displacements, dtype=np.float64)
-    deformed      = vertices + scale_factor * disp
-    magnitude     = np.linalg.norm(disp, axis=1)
+    vertices = stl_surface.vertices.astype(np.float64)
+    disp = np.asarray(displacements, dtype=np.float64)
+    deformed = vertices + scale_factor * disp
+    magnitude = np.linalg.norm(disp, axis=1)
 
     # Per-face colour = mean magnitude of its 3 vertices
     face_mag = magnitude[stl_surface.faces].mean(axis=1)
     norm_mag = (face_mag - face_mag.min()) / ((face_mag.max() - face_mag.min()) + 1e-15)
 
-    cmap       = plt.get_cmap(colormap)
+    cmap = plt.get_cmap(colormap)
     face_color = cmap(norm_mag)
 
-    tri_verts = deformed[stl_surface.faces]    # (F, 3, 3)
-    poly      = Poly3DCollection(tri_verts, facecolors=face_color,
-                                 edgecolors="none", alpha=0.9)
+    tri_verts = deformed[stl_surface.faces]  # (F, 3, 3)
+    poly = Poly3DCollection(tri_verts, facecolors=face_color, edgecolors="none", alpha=0.9)
 
     fig = plt.figure(figsize=(10, 7))
-    ax  = fig.add_subplot(111, projection="3d")
+    ax = fig.add_subplot(111, projection="3d")
     ax.add_collection3d(poly)
 
     # Set axis limits to deformed bounding box
     for i, lbl in enumerate(["X", "Y", "Z"]):
         lo, hi = deformed[:, i].min(), deformed[:, i].max()
-        pad    = (hi - lo) * 0.05 + 1e-9
+        pad = (hi - lo) * 0.05 + 1e-9
         getattr(ax, f"set_{lbl.lower()}lim")(lo - pad, hi + pad)
         getattr(ax, f"set_{lbl.lower()}label")(lbl)
 
-    sm  = plt.cm.ScalarMappable(cmap=cmap,
-                                norm=plt.Normalize(face_mag.min(), face_mag.max()))
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(face_mag.min(), face_mag.max()))
     sm.set_array([])
     fig.colorbar(sm, ax=ax, label="Displacement magnitude (m)", shrink=0.6)
     ax.set_title(f"STL Deformation  (scale × {scale_factor})")
@@ -369,8 +331,7 @@ def visualize_stl_deformation(stl_surface, displacements, colormap="plasma",
     return fig
 
 
-def visualize_stl_stress(stl_surface, stresses_per_face, colormap="jet",
-                         show=True):
+def visualize_stl_stress(stl_surface, stresses_per_face, colormap="jet", show=True):
     """Render von Mises stress on a 3D STL surface.
 
     Parameters
@@ -384,34 +345,32 @@ def visualize_stl_stress(stl_surface, stresses_per_face, colormap="jet",
     -------
     fig : matplotlib Figure
     """
-    from mpl_toolkits.mplot3d import Axes3D    # noqa: F401
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
     from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
     s = np.asarray(stresses_per_face, dtype=np.float64)
     S11, S22, _, S12 = s[:, 0], s[:, 1], s[:, 2], s[:, 3]
     von_mises = np.sqrt(S11**2 - S11 * S22 + S22**2 + 3.0 * S12**2)
 
-    norm_vm    = (von_mises - von_mises.min()) / ((von_mises.max() - von_mises.min()) + 1e-15)
-    cmap       = plt.get_cmap(colormap)
+    norm_vm = (von_mises - von_mises.min()) / ((von_mises.max() - von_mises.min()) + 1e-15)
+    cmap = plt.get_cmap(colormap)
     face_color = cmap(norm_vm)
 
-    vertices  = stl_surface.vertices.astype(np.float64)
+    vertices = stl_surface.vertices.astype(np.float64)
     tri_verts = vertices[stl_surface.faces]
-    poly      = Poly3DCollection(tri_verts, facecolors=face_color,
-                                 edgecolors="none", alpha=0.9)
+    poly = Poly3DCollection(tri_verts, facecolors=face_color, edgecolors="none", alpha=0.9)
 
     fig = plt.figure(figsize=(10, 7))
-    ax  = fig.add_subplot(111, projection="3d")
+    ax = fig.add_subplot(111, projection="3d")
     ax.add_collection3d(poly)
 
     for i, lbl in enumerate(["X", "Y", "Z"]):
         lo, hi = vertices[:, i].min(), vertices[:, i].max()
-        pad    = (hi - lo) * 0.05 + 1e-9
+        pad = (hi - lo) * 0.05 + 1e-9
         getattr(ax, f"set_{lbl.lower()}lim")(lo - pad, hi + pad)
         getattr(ax, f"set_{lbl.lower()}label")(lbl)
 
-    sm  = plt.cm.ScalarMappable(cmap=cmap,
-                                norm=plt.Normalize(von_mises.min(), von_mises.max()))
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(von_mises.min(), von_mises.max()))
     sm.set_array([])
     fig.colorbar(sm, ax=ax, label="von Mises stress (Pa)", shrink=0.6)
     ax.set_title("STL Residual Stress Field")

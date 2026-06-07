@@ -54,6 +54,7 @@ from impact_sim import (
 # Shared fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def default_params():
     return ShotPeenParams()
@@ -100,6 +101,7 @@ def sim_results(default_params):
 # Class 1: ShotPeenParams
 # ---------------------------------------------------------------------------
 
+
 class TestShotPeenParams:
 
     def test_default_radius(self, default_params):
@@ -109,7 +111,7 @@ class TestShotPeenParams:
         assert default_params.Ms > 0
 
     def test_mass_formula(self, default_params):
-        expected = (4.0 / 3.0) * math.pi * default_params.R ** 3 * default_params.rho_s
+        expected = (4.0 / 3.0) * math.pi * default_params.R**3 * default_params.rho_s
         assert default_params.Ms == pytest.approx(expected, rel=1e-9)
 
     def test_normal_velocity_at_90deg(self, default_params):
@@ -139,6 +141,7 @@ class TestShotPeenParams:
 # ---------------------------------------------------------------------------
 # Class 2: generate_mesh — surface (Nz=1)
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateMeshSurface:
 
@@ -201,6 +204,7 @@ class TestGenerateMeshSurface:
 # Class 3: generate_mesh — 3-D hex
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateMeshVolume:
 
     def test_node_count_3d(self, volume_mesh):
@@ -222,13 +226,14 @@ class TestGenerateMeshVolume:
 
     def test_small_mesh_3d(self):
         m = generate_mesh(Lx=0.001, Ly=0.001, Lz=0.001, Nx=2, Ny=2, Nz=2)
-        assert len(m["node_labels"]) == 3 * 3 * 3   # = 27
+        assert len(m["node_labels"]) == 3 * 3 * 3  # = 27
         assert len(m["element_labels"]) == 2 * 2 * 2  # = 8
 
 
 # ---------------------------------------------------------------------------
 # Class 4: compute_contact_params
 # ---------------------------------------------------------------------------
+
 
 class TestComputeContactParams:
 
@@ -279,11 +284,24 @@ class TestComputeContactParams:
 # Class 5: compute_stress_field
 # ---------------------------------------------------------------------------
 
+
 class TestComputeStressField:
 
     def test_keys_present(self, stress_field):
-        required = {"Z", "Z_bar", "sigma_xe", "sigma_ze", "sigma_eqe",
-                    "eps_load_p", "eps_unload_p", "Sxl", "Sxu", "eps_avg", "sxs", "sR"}
+        required = {
+            "Z",
+            "Z_bar",
+            "sigma_xe",
+            "sigma_ze",
+            "sigma_eqe",
+            "eps_load_p",
+            "eps_unload_p",
+            "Sxl",
+            "Sxu",
+            "eps_avg",
+            "sxs",
+            "sR",
+        }
         assert required.issubset(stress_field.keys())
 
     def test_Z_positive_increasing(self, stress_field):
@@ -326,7 +344,7 @@ class TestComputeStressField:
     def test_sR_decays_to_zero_deep(self, stress_field):
         # Far from surface, residual stress should approach zero
         sR_deep = stress_field["sR"][-100:]
-        assert np.all(np.abs(sR_deep) < 1e6)   # < 1 MPa far away
+        assert np.all(np.abs(sR_deep) < 1e6)  # < 1 MPa far away
 
     def test_stress_field_shape_consistency(self, stress_field):
         n = len(stress_field["Z"])
@@ -353,6 +371,7 @@ class TestComputeStressField:
 # Class 6: compute_plastic_zone
 # ---------------------------------------------------------------------------
 
+
 class TestComputePlasticZone:
 
     def test_a_p_positive(self, plastic):
@@ -376,7 +395,7 @@ class TestComputePlasticZone:
 
     def test_V_p_formula(self, plastic):
         r_p = plastic["r_p"]
-        expected = (2.0 * math.pi / 3.0) * r_p ** 3
+        expected = (2.0 * math.pi / 3.0) * r_p**3
         assert plastic["V_p"] == pytest.approx(expected, rel=1e-9)
 
     def test_W_t_equals_Vp_sy_epsMp(self, plastic, default_params):
@@ -406,6 +425,7 @@ class TestComputePlasticZone:
 # Class 7: compute_energy_balance
 # ---------------------------------------------------------------------------
 
+
 class TestComputeEnergyBalance:
 
     def test_keys_present(self, energy):
@@ -416,7 +436,7 @@ class TestComputeEnergyBalance:
         assert energy["KE_initial"] > 0
 
     def test_KE_initial_formula(self, energy, default_params):
-        expected = 0.5 * default_params.Ms * default_params.V ** 2
+        expected = 0.5 * default_params.Ms * default_params.V**2
         assert energy["KE_initial"] == pytest.approx(expected, rel=1e-9)
 
     def test_energy_conservation(self, energy):
@@ -442,8 +462,10 @@ class TestComputeEnergyBalance:
     def test_higher_velocity_higher_KE(self):
         p1 = ShotPeenParams(V=20.0)
         p2 = ShotPeenParams(V=60.0)
-        c1 = compute_contact_params(p1); pl1 = compute_plastic_zone(p1)
-        c2 = compute_contact_params(p2); pl2 = compute_plastic_zone(p2)
+        c1 = compute_contact_params(p1)
+        pl1 = compute_plastic_zone(p1)
+        c2 = compute_contact_params(p2)
+        pl2 = compute_plastic_zone(p2)
         e1 = compute_energy_balance(p1, c1, pl1)
         e2 = compute_energy_balance(p2, c2, pl2)
         assert e2["KE_initial"] > e1["KE_initial"]
@@ -458,6 +480,7 @@ class TestComputeEnergyBalance:
 # ---------------------------------------------------------------------------
 # Class 8: map_displacements
 # ---------------------------------------------------------------------------
+
 
 class TestMapDisplacements:
 
@@ -505,9 +528,7 @@ class TestMapDisplacements:
     def test_custom_impact_center(self, surface_mesh, contact, plastic, default_params):
         # Shift impact to corner; center node should now have different displacement
         ic_shifted = np.array([0.0, 0.0, 0.0])
-        _, disp_shifted = map_displacements(
-            surface_mesh, contact, plastic, default_params, impact_center=ic_shifted
-        )
+        _, disp_shifted = map_displacements(surface_mesh, contact, plastic, default_params, impact_center=ic_shifted)
         _, disp_default = map_displacements(surface_mesh, contact, plastic, default_params)
         # They should differ (different impact centres)
         assert not np.allclose(disp_shifted, disp_default)
@@ -519,18 +540,15 @@ class TestMapDisplacements:
         _, disp = map_displacements(mesh, contact, plastic, default_params)
         coords = mesh["node_coords"]
         # Find node above and below impact centre (same x, different y)
-        idx_a = np.argmin(
-            np.sqrt((coords[:, 0] - ic[0]) ** 2 + (coords[:, 1] - (ic[1] + 0.001)) ** 2)
-        )
-        idx_b = np.argmin(
-            np.sqrt((coords[:, 0] - ic[0]) ** 2 + (coords[:, 1] - (ic[1] - 0.001)) ** 2)
-        )
+        idx_a = np.argmin(np.sqrt((coords[:, 0] - ic[0]) ** 2 + (coords[:, 1] - (ic[1] + 0.001)) ** 2))
+        idx_b = np.argmin(np.sqrt((coords[:, 0] - ic[0]) ** 2 + (coords[:, 1] - (ic[1] - 0.001)) ** 2))
         assert disp[idx_a, 2] == pytest.approx(disp[idx_b, 2], rel=0.05)
 
 
 # ---------------------------------------------------------------------------
 # Class 9: map_stresses
 # ---------------------------------------------------------------------------
+
 
 class TestMapStresses:
 
@@ -562,21 +580,15 @@ class TestMapStresses:
         # Compute centroids manually
         coords_n = mesh["node_coords"]
         labels_n = mesh["node_labels"]
-        lbl_idx  = {int(l): i for i, l in enumerate(labels_n)}
-        conn     = mesh["element_connectivity"]
-        centroids_xy = np.array([
-            coords_n[[lbl_idx[int(n)] for n in row]][:, :2].mean(axis=0)
-            for row in conn
-        ])
-        r_e = np.sqrt(
-            (centroids_xy[:, 0] - ic[0]) ** 2
-            + (centroids_xy[:, 1] - ic[1]) ** 2
-        )
+        lbl_idx = {int(l): i for i, l in enumerate(labels_n)}
+        conn = mesh["element_connectivity"]
+        centroids_xy = np.array([coords_n[[lbl_idx[int(n)] for n in row]][:, :2].mean(axis=0) for row in conn])
+        r_e = np.sqrt((centroids_xy[:, 0] - ic[0]) ** 2 + (centroids_xy[:, 1] - ic[1]) ** 2)
         centre_mask = r_e < plastic["r_p"]
-        far_mask    = r_e > 3.0 * plastic["r_p"]
+        far_mask = r_e > 3.0 * plastic["r_p"]
         if centre_mask.any() and far_mask.any():
             s11_centre = np.abs(stresses[centre_mask, 0]).mean()
-            s11_far    = np.abs(stresses[far_mask, 0]).mean()
+            s11_far = np.abs(stresses[far_mask, 0]).mean()
             assert s11_centre >= s11_far
 
     def test_far_elements_zero_stress(self, stress_field, plastic, default_params):
@@ -595,6 +607,7 @@ class TestMapStresses:
 # Class 10: run_simulation integration
 # ---------------------------------------------------------------------------
 
+
 class TestRunSimulation:
 
     def test_returns_dict(self, sim_results):
@@ -602,9 +615,17 @@ class TestRunSimulation:
 
     def test_required_keys(self, sim_results):
         required = {
-            "mesh", "contact", "stress_field", "plastic", "energy",
-            "displacements", "stresses", "node_labels", "elem_labels",
-            "disp_node_labels", "stress_elem_labels"
+            "mesh",
+            "contact",
+            "stress_field",
+            "plastic",
+            "energy",
+            "displacements",
+            "stresses",
+            "node_labels",
+            "elem_labels",
+            "disp_node_labels",
+            "stress_elem_labels",
         }
         assert required.issubset(sim_results.keys())
 
@@ -612,11 +633,16 @@ class TestRunSimulation:
         with tempfile.TemporaryDirectory() as tmpdir:
             run_simulation(params=default_params, output_dir=tmpdir, Nx=4, Ny=4, verbose=False)
             for fname in [
-                "node_labels.npy", "node_coords.npy",
-                "element_labels.npy", "element_connectivity.npy",
-                "disp_node_labels.npy", "displacements.npy",
-                "stress_element_labels.npy", "stresses.npy",
-                "sR_depth_profile.npy", "sigma_eqe_profile.npy",
+                "node_labels.npy",
+                "node_coords.npy",
+                "element_labels.npy",
+                "element_connectivity.npy",
+                "disp_node_labels.npy",
+                "displacements.npy",
+                "stress_element_labels.npy",
+                "stresses.npy",
+                "sR_depth_profile.npy",
+                "sigma_eqe_profile.npy",
                 "energy_balance.txt",
             ]:
                 assert os.path.exists(os.path.join(tmpdir, fname)), f"Missing: {fname}"
@@ -634,28 +660,19 @@ class TestRunSimulation:
 
     def test_no_npy_if_save_false(self, default_params):
         with tempfile.TemporaryDirectory() as tmpdir:
-            run_simulation(
-                params=default_params, output_dir=tmpdir,
-                Nx=4, Ny=4, save_npy=False, verbose=False
-            )
+            run_simulation(params=default_params, output_dir=tmpdir, Nx=4, Ny=4, save_npy=False, verbose=False)
             npy_files = list(Path(tmpdir).glob("*.npy"))
             assert len(npy_files) == 0
 
     def test_verbose_suppressed(self, default_params, capsys):
         with tempfile.TemporaryDirectory() as tmpdir:
-            run_simulation(
-                params=default_params, output_dir=tmpdir,
-                Nx=3, Ny=3, save_npy=False, verbose=False
-            )
+            run_simulation(params=default_params, output_dir=tmpdir, Nx=3, Ny=3, save_npy=False, verbose=False)
             captured = capsys.readouterr()
             assert captured.out == ""
 
     def test_verbose_prints(self, default_params, capsys):
         with tempfile.TemporaryDirectory() as tmpdir:
-            run_simulation(
-                params=default_params, output_dir=tmpdir,
-                Nx=3, Ny=3, save_npy=False, verbose=True
-            )
+            run_simulation(params=default_params, output_dir=tmpdir, Nx=3, Ny=3, save_npy=False, verbose=True)
             captured = capsys.readouterr()
             assert "Impact Simulation" in captured.out
 
@@ -667,10 +684,7 @@ class TestRunSimulation:
 
     def test_3d_mesh_integration(self, default_params):
         with tempfile.TemporaryDirectory() as tmpdir:
-            res = run_simulation(
-                params=default_params, output_dir=tmpdir,
-                Nx=3, Ny=3, Nz=2, verbose=False
-            )
+            res = run_simulation(params=default_params, output_dir=tmpdir, Nx=3, Ny=3, Nz=2, verbose=False)
         # 3-D mesh: (3+1)*(3+1)*(2+1) = 4*4*3 = 48 nodes
         assert len(res["node_labels"]) == 48
 
@@ -697,6 +711,7 @@ class TestRunSimulation:
 # ---------------------------------------------------------------------------
 # Class 11: plot_residual_stress
 # ---------------------------------------------------------------------------
+
 
 class TestPlotResidualStress:
 
@@ -726,6 +741,7 @@ class TestPlotResidualStress:
 # Class 12: Numerical sanity / physics checks
 # ---------------------------------------------------------------------------
 
+
 class TestPhysicsSanity:
 
     def test_ae_less_than_shot_radius(self, contact, default_params):
@@ -738,7 +754,7 @@ class TestPhysicsSanity:
 
     def test_W_t_matches_formula(self, plastic, default_params):
         V_p = plastic["V_p"]
-        sy  = default_params.sigma_yield
+        sy = default_params.sigma_yield
         eps = plastic["epsilon_Mp"]
         assert plastic["W_t"] == pytest.approx(V_p * sy * eps, rel=1e-9)
 
@@ -750,14 +766,14 @@ class TestPhysicsSanity:
         # sigma_eqe should be smaller far from the surface
         eqe = stress_field["sigma_eqe"]
         near_surface = np.mean(np.abs(eqe[:100]))
-        deep         = np.mean(np.abs(eqe[-100:]))
+        deep = np.mean(np.abs(eqe[-100:]))
         assert near_surface > deep
 
     def test_energy_fractions_sum_to_one(self, energy):
         ke0 = energy["KE_initial"]
-        f_p  = energy["W_plastic"]  / ke0
-        f_r  = energy["KE_rebound"] / ke0
-        f_w  = energy["W_wave"]     / ke0
+        f_p = energy["W_plastic"] / ke0
+        f_r = energy["KE_rebound"] / ke0
+        f_w = energy["W_wave"] / ke0
         assert f_p + f_r + f_w == pytest.approx(1.0, abs=1e-9)
 
     def test_COR_physical_range(self, energy):
@@ -769,9 +785,9 @@ class TestPhysicsSanity:
         assert default_params.Vn <= default_params.V
 
     def test_contact_radius_increases_with_k(self):
-        p_low  = ShotPeenParams(k=0.5)
+        p_low = ShotPeenParams(k=0.5)
         p_high = ShotPeenParams(k=1.0)
-        ae_low  = compute_contact_params(p_low)["ae"]
+        ae_low = compute_contact_params(p_low)["ae"]
         ae_high = compute_contact_params(p_high)["ae"]
         assert ae_high > ae_low
 

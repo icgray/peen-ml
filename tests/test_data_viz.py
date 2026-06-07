@@ -53,13 +53,14 @@ GRID_SIZE = 5
 
 # Patch target for all matplotlib show calls inside data_viz
 _PLT_SHOW = "data_viz.plt.show"
-_PLT_ION = "data_viz.plt.ion"     # not used in data_viz, but safe to include
-_PLT_IOFF = "data_viz.plt.ioff"   # not used in data_viz, but safe to include
+_PLT_ION = "data_viz.plt.ion"  # not used in data_viz, but safe to include
+_PLT_IOFF = "data_viz.plt.ioff"  # not used in data_viz, but safe to include
 
 
 # ============================================================================
 # load_data
 # ============================================================================
+
 
 class TestLoadData:
     """Tests for the safe numpy file loader."""
@@ -121,6 +122,7 @@ class TestLoadData:
 # visualize_checkerboard
 # ============================================================================
 
+
 class TestVisualizeCheckerboard:
     """Tests for checkerboard pattern rendering."""
 
@@ -161,6 +163,7 @@ class TestVisualizeCheckerboard:
 # ============================================================================
 # compute_deformed_mesh
 # ============================================================================
+
 
 class TestComputeDeformedMesh:
     """Tests for mesh deformation computation."""
@@ -217,9 +220,7 @@ class TestComputeDeformedMesh:
 
     def test_shuffled_label_alignment(self, shuffled_labels_sim_folder):
         """Property: displacements are correctly re-indexed when disp labels differ from node labels."""
-        folder, node_coords, displacements, disp_node_labels, node_labels = (
-            shuffled_labels_sim_folder
-        )
+        folder, node_coords, displacements, disp_node_labels, node_labels = shuffled_labels_sim_folder
 
         # Build expected deformed coords manually with the correct alignment
         node_label_to_index = {lbl: idx for idx, lbl in enumerate(node_labels)}
@@ -260,6 +261,7 @@ class TestComputeDeformedMesh:
     def test_missing_element_connectivity_returns_none_triple(self, sim_folder, tmp_path):
         """Edge: absent element_connectivity.npy → (None, None, None)."""
         import shutil  # noqa: PLC0415
+
         # Copy all files except element_connectivity
         for fname in os.listdir(str(sim_folder)):
             if fname.endswith(".npy") and fname != "element_connectivity.npy":
@@ -276,6 +278,7 @@ class TestComputeDeformedMesh:
 # ============================================================================
 # visualize_mesh
 # ============================================================================
+
 
 class TestVisualizeMesh:
     """Tests for undeformed + deformed mesh line-collection rendering."""
@@ -314,6 +317,7 @@ class TestVisualizeMesh:
 # visualize_stress_field
 # ============================================================================
 
+
 class TestVisualizeStressField:
     """Tests for von Mises stress rendering on the deformed mesh."""
 
@@ -340,6 +344,7 @@ class TestVisualizeStressField:
     def test_missing_stress_file_does_not_crash(self, mock_show, sim_folder, tmp_path):
         """Edge: absent stresses.npy returns silently without raising."""
         import shutil  # noqa: PLC0415
+
         # Copy all files except stresses
         for fname in os.listdir(str(sim_folder)):
             if fname.endswith(".npy") and "stress" not in fname:
@@ -353,6 +358,7 @@ class TestVisualizeStressField:
 # ============================================================================
 # visualize_deformation
 # ============================================================================
+
 
 class TestVisualizeDeformation:
     """Tests for deformation-magnitude rendering on the deformed mesh."""
@@ -391,6 +397,7 @@ class TestVisualizeDeformation:
 # ============================================================================
 # visualize_all
 # ============================================================================
+
 
 class TestVisualizeAll:
     """Tests for the full visualization pipeline wrapper."""

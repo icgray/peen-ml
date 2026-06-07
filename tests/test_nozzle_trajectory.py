@@ -1,6 +1,7 @@
 """
 Tests for nozzle_trajectory: ScanParams, NozzleTrajectory, and all loaders.
 """
+
 import csv
 import os
 import tempfile
@@ -10,7 +11,8 @@ import pytest
 
 # Adjust sys.path so the module can be imported from the src folder
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'peen-ml'))
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "peen-ml"))
 
 from nozzle_trajectory import (
     ScanParams,
@@ -26,6 +28,7 @@ from nozzle_trajectory import (
 # -------------------------------------------------------------------
 # NozzleTrajectory basics
 # -------------------------------------------------------------------
+
 
 class TestNozzleTrajectory:
     def test_init_valid(self):
@@ -51,11 +54,17 @@ class TestNozzleTrajectory:
 # raster_scan
 # -------------------------------------------------------------------
 
+
 class TestRasterScan:
     def _default_params(self):
         return ScanParams(
-            pattern="raster", Lx=0.04, Ly=0.04,
-            z_standoff=0.15, scan_speed=0.05, line_spacing=0.01, dt=0.01,
+            pattern="raster",
+            Lx=0.04,
+            Ly=0.04,
+            z_standoff=0.15,
+            scan_speed=0.05,
+            line_spacing=0.01,
+            dt=0.01,
         )
 
     def test_returns_trajectory(self):
@@ -68,18 +77,18 @@ class TestRasterScan:
 
     def test_z_constant(self):
         params = self._default_params()
-        traj   = raster_scan(params)
+        traj = raster_scan(params)
         np.testing.assert_allclose(traj.positions[:, 2], params.z_standoff, atol=1e-6)
 
     def test_x_in_bounds(self):
         params = self._default_params()
-        traj   = raster_scan(params)
+        traj = raster_scan(params)
         assert traj.positions[:, 0].min() >= -1e-6
         assert traj.positions[:, 0].max() <= params.Lx + 1e-6
 
     def test_y_in_bounds(self):
         params = self._default_params()
-        traj   = raster_scan(params)
+        traj = raster_scan(params)
         assert traj.positions[:, 1].min() >= -1e-6
         assert traj.positions[:, 1].max() <= params.Ly + 1e-6
 
@@ -96,10 +105,10 @@ class TestRasterScan:
 # zigzag_scan
 # -------------------------------------------------------------------
 
+
 class TestZigzagScan:
     def _params(self):
-        return ScanParams(Lx=0.02, Ly=0.02, z_standoff=0.10,
-                          scan_speed=0.05, line_spacing=0.005, dt=0.01)
+        return ScanParams(Lx=0.02, Ly=0.02, z_standoff=0.10, scan_speed=0.05, line_spacing=0.005, dt=0.01)
 
     def test_returns_trajectory(self):
         traj = zigzag_scan(self._params())
@@ -107,7 +116,7 @@ class TestZigzagScan:
 
     def test_z_constant(self):
         params = self._params()
-        traj   = zigzag_scan(params)
+        traj = zigzag_scan(params)
         np.testing.assert_allclose(traj.positions[:, 2], params.z_standoff, atol=1e-6)
 
     def test_nonempty(self):
@@ -119,10 +128,10 @@ class TestZigzagScan:
 # spiral_scan
 # -------------------------------------------------------------------
 
+
 class TestSpiralScan:
     def _params(self):
-        return ScanParams(Lx=0.04, Ly=0.04, z_standoff=0.12,
-                          scan_speed=0.05, line_spacing=0.006, dt=0.01)
+        return ScanParams(Lx=0.04, Ly=0.04, z_standoff=0.12, scan_speed=0.05, line_spacing=0.006, dt=0.01)
 
     def test_returns_trajectory(self):
         traj = spiral_scan(self._params())
@@ -134,13 +143,14 @@ class TestSpiralScan:
 
     def test_z_constant(self):
         params = self._params()
-        traj   = spiral_scan(params)
+        traj = spiral_scan(params)
         np.testing.assert_allclose(traj.positions[:, 2], params.z_standoff, atol=1e-6)
 
 
 # -------------------------------------------------------------------
 # from_csv
 # -------------------------------------------------------------------
+
 
 class TestFromCSV:
     def _write_xyz_csv(self, path, z_standoff=None):
@@ -208,7 +218,7 @@ class TestFromCSV:
             self._write_xyz_csv(path, z_standoff=0.15)
             # CSV has no 'z' column, and we call from_csv without providing z_standoff
             with pytest.raises((KeyError, ValueError)):
-                from_csv(path)   # must raise because z is missing
+                from_csv(path)  # must raise because z is missing
         finally:
             os.unlink(path)
 
@@ -217,9 +227,10 @@ class TestFromCSV:
 # from_npy
 # -------------------------------------------------------------------
 
+
 class TestFromNpy:
     def test_3col(self):
-        arr  = np.array([[0.01, 0.01, 0.15], [0.02, 0.01, 0.15]], dtype=np.float32)
+        arr = np.array([[0.01, 0.01, 0.15], [0.02, 0.01, 0.15]], dtype=np.float32)
         with tempfile.NamedTemporaryFile(suffix=".npy", delete=False) as f:
             path = f.name
         try:
@@ -231,9 +242,7 @@ class TestFromNpy:
             os.unlink(path)
 
     def test_4col_infers_dt(self):
-        arr = np.array([[0.01, 0.01, 0.15, 0.0],
-                        [0.02, 0.01, 0.15, 0.01],
-                        [0.02, 0.02, 0.15, 0.02]], dtype=np.float32)
+        arr = np.array([[0.01, 0.01, 0.15, 0.0], [0.02, 0.01, 0.15, 0.01], [0.02, 0.02, 0.15, 0.02]], dtype=np.float32)
         with tempfile.NamedTemporaryFile(suffix=".npy", delete=False) as f:
             path = f.name
         try:

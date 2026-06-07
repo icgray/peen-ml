@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# pylint: disable=duplicate-code
 """Retrain only the MT_MultiTask_Ti_Steel model with phased-warmup settings.
 
 Uses warmup_disp_epochs=20 so the displacement head trains alone for the
@@ -9,7 +10,10 @@ Usage:
     python retrain_mt_model.py [--epochs 100] [--output LargeScaleRun1]
 """
 from __future__ import annotations
-import argparse, os, sys, time
+import argparse
+import os
+import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -17,7 +21,7 @@ import torch
 import torch.optim as optim
 
 _HERE = Path(__file__).resolve().parent
-_SRC  = _HERE / "src" / "peen-ml"
+_SRC = _HERE / "src" / "peen-ml"
 for _p in [str(_SRC), str(_HERE)]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -31,17 +35,16 @@ def _cosine_scheduler(optimizer, epochs):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output",  default="LargeScaleRun1",
-                        help="Run directory (default: LargeScaleRun1)")
-    parser.add_argument("--epochs",  type=int, default=100)
-    parser.add_argument("--patience",type=int, default=20)
-    parser.add_argument("--batch",   type=int, default=32)
-    parser.add_argument("--lr",      type=float, default=3e-4)
+    parser.add_argument("--output", default="LargeScaleRun1", help="Run directory (default: LargeScaleRun1)")
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--patience", type=int, default=20)
+    parser.add_argument("--batch", type=int, default=32)
+    parser.add_argument("--lr", type=float, default=3e-4)
     args = parser.parse_args()
 
-    run_dir     = Path(args.output).resolve()
+    run_dir = Path(args.output).resolve()
     dataset_dir = str(run_dir / "Dataset_Ti_6Al_4V__steel_200")
-    model_dir   = str(run_dir / "Models" / "MT_MultiTask_Ti_Steel")
+    model_dir = str(run_dir / "Models" / "MT_MultiTask_Ti_Steel")
 
     if not os.path.isdir(dataset_dir):
         print(f"ERROR: dataset not found: {dataset_dir}")
@@ -58,23 +61,25 @@ def main():
     t0 = time.perf_counter()
     train_loader, val_loader, test_loader, stats = M.create_multitask_data_loaders(
         dataset_dir,
-        batch_size            = args.batch,
-        load_material_features= False,
-        use_physics_cb        = True,
+        batch_size=args.batch,
+        load_material_features=False,
+        use_physics_cb=True,
     )
 
     model = M.MultiTaskPredictor(
-        input_channels    = stats["input_channels"],
-        num_nodes         = stats["num_nodes"],
-        checkerboard_size = stats["checkerboard_size"],
-        mat_dim           = 0,
-        predict_stress    = True,
-        predict_scalars   = True,
+        input_channels=stats["input_channels"],
+        num_nodes=stats["num_nodes"],
+        checkerboard_size=stats["checkerboard_size"],
+        mat_dim=0,
+        predict_stress=True,
+        predict_scalars=True,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"  nodes={stats['num_nodes']}  C_in={stats['input_channels']}  "
-          f"params={n_params:,}  checkerboard={stats['checkerboard_size']}")
+    print(
+        f"  nodes={stats['num_nodes']}  C_in={stats['input_channels']}  "
+        f"params={n_params:,}  checkerboard={stats['checkerboard_size']}"
+    )
 
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     scheduler = _cosine_scheduler(optimizer, args.epochs)
@@ -82,22 +87,22 @@ def main():
     plot_path = os.path.join(model_dir, "training_loss_curve.png")
 
     train_losses, val_losses = M.train_model_multitask(
-        model              = model,
-        train_loader       = train_loader,
-        val_loader         = val_loader,
-        optimizer          = optimizer,
-        scheduler          = scheduler,
-        epochs             = args.epochs,
-        patience           = args.patience,
-        device             = device,
-        plot_save_path     = plot_path,
-        use_amp            = torch.cuda.is_available(),
-        max_grad_norm      = 1.0,
-        loss_weights       = (1.0, 0.005, 0.01),   # λ_d, λ_s, λ_c
-        use_material       = False,
-        stats              = stats,
-        warmup_disp_epochs = 20,
-        stress_components  = 2,
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        epochs=args.epochs,
+        patience=args.patience,
+        device=device,
+        plot_save_path=plot_path,
+        use_amp=torch.cuda.is_available(),
+        max_grad_norm=1.0,
+        loss_weights=(1.0, 0.005, 0.01),  # λ_d, λ_s, λ_c
+        use_material=False,
+        stats=stats,
+        warmup_disp_epochs=20,
+        stress_components=2,
     )
 
     # Evaluate displacement RMSE on test set
@@ -115,12 +120,10 @@ def main():
 
     save_path = os.path.join(model_dir, "trained_multitask_model.pth")
     torch.save(model, save_path)
-    np.save(os.path.join(model_dir, "multitask_stats.npy"),
-            np.array([stats["disp_scale"], stats["stress_scale"]]))
+    np.save(os.path.join(model_dir, "multitask_stats.npy"), np.array([stats["disp_scale"], stats["stress_scale"]]))
 
     elapsed = time.perf_counter() - t0
-    print(f"\n[OK]  RMSE={rmse_um:.2f} µm  "
-          f"epochs={len(train_losses)}  time={elapsed:.0f}s")
+    print(f"\n[OK]  RMSE={rmse_um:.2f} µm  " f"epochs={len(train_losses)}  time={elapsed:.0f}s")
     print(f"Model saved to: {save_path}")
     print("\nNext: run_eval.py --models MT to update eval_results.csv")
 

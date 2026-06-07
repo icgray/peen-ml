@@ -2,6 +2,7 @@
 Tests for materials.py — validate that the material library is complete,
 physically plausible, and that the helper functions work correctly.
 """
+
 import sys
 import os
 import pytest
@@ -22,18 +23,15 @@ from materials import (
 # Library completeness
 # ---------------------------------------------------------------------------
 
+
 def test_workpiece_count():
     """At least 5 workpiece materials are defined."""
-    assert len(WORKPIECE_MATERIALS) >= 5, (
-        f"Expected >= 5 workpiece materials, found {len(WORKPIECE_MATERIALS)}"
-    )
+    assert len(WORKPIECE_MATERIALS) >= 5, f"Expected >= 5 workpiece materials, found {len(WORKPIECE_MATERIALS)}"
 
 
 def test_shot_count():
     """At least 5 shot materials are defined."""
-    assert len(SHOT_MATERIALS) >= 5, (
-        f"Expected >= 5 shot materials, found {len(SHOT_MATERIALS)}"
-    )
+    assert len(SHOT_MATERIALS) >= 5, f"Expected >= 5 shot materials, found {len(SHOT_MATERIALS)}"
 
 
 def test_workpiece_fields():
@@ -41,9 +39,7 @@ def test_workpiece_fields():
     required = {"E", "nu", "sigma_yield", "c", "source"}
     for name, props in WORKPIECE_MATERIALS.items():
         missing = required - props.keys()
-        assert not missing, (
-            f"Workpiece '{name}' is missing fields: {missing}"
-        )
+        assert not missing, f"Workpiece '{name}' is missing fields: {missing}"
 
 
 def test_shot_fields():
@@ -51,14 +47,13 @@ def test_shot_fields():
     required = {"rho_s", "E_s", "nu_s", "source"}
     for name, props in SHOT_MATERIALS.items():
         missing = required - props.keys()
-        assert not missing, (
-            f"Shot material '{name}' is missing fields: {missing}"
-        )
+        assert not missing, f"Shot material '{name}' is missing fields: {missing}"
 
 
 # ---------------------------------------------------------------------------
 # Physical plausibility
 # ---------------------------------------------------------------------------
+
 
 def test_workpiece_values_physical():
     """Workpiece property values are within physically plausible ranges."""
@@ -67,9 +62,7 @@ def test_workpiece_values_physical():
         assert 0 < p["nu"] < 0.5, f"{name}: nu = {p['nu']} is outside (0, 0.5)"
         assert p["sigma_yield"] > 0, f"{name}: sigma_yield = {p['sigma_yield']} Pa <= 0"
         assert p["c"] > 0, f"{name}: c = {p['c']} Pa <= 0"
-        assert isinstance(p["source"], str) and len(p["source"]) > 0, (
-            f"{name}: 'source' must be a non-empty string"
-        )
+        assert isinstance(p["source"], str) and len(p["source"]) > 0, f"{name}: 'source' must be a non-empty string"
 
 
 def test_shot_values_physical():
@@ -78,14 +71,13 @@ def test_shot_values_physical():
         assert p["rho_s"] > 100, f"{name}: rho_s = {p['rho_s']} kg/m³ is suspiciously low"
         assert p["E_s"] > 1e9, f"{name}: E_s = {p['E_s']} Pa is suspiciously low"
         assert 0 < p["nu_s"] < 0.5, f"{name}: nu_s = {p['nu_s']} is outside (0, 0.5)"
-        assert isinstance(p["source"], str) and len(p["source"]) > 0, (
-            f"{name}: 'source' must be a non-empty string"
-        )
+        assert isinstance(p["source"], str) and len(p["source"]) > 0, f"{name}: 'source' must be a non-empty string"
 
 
 # ---------------------------------------------------------------------------
 # Accessor helpers
 # ---------------------------------------------------------------------------
+
 
 def test_get_workpiece_valid():
     """get_workpiece returns a copy with all fields for a valid name."""
@@ -129,9 +121,7 @@ def test_get_workpiece_error_lists_valid_names():
     except KeyError as exc:
         msg = str(exc)
         for name in WORKPIECE_MATERIALS:
-            assert name in msg, (
-                f"Valid name '{name}' not listed in error message: {msg}"
-            )
+            assert name in msg, f"Valid name '{name}' not listed in error message: {msg}"
 
 
 def test_get_shot_error_lists_valid_names():
@@ -141,6 +131,4 @@ def test_get_shot_error_lists_valid_names():
     except KeyError as exc:
         msg = str(exc)
         for name in SHOT_MATERIALS:
-            assert name in msg, (
-                f"Valid name '{name}' not listed in error message: {msg}"
-            )
+            assert name in msg, f"Valid name '{name}' not listed in error message: {msg}"

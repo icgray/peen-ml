@@ -73,6 +73,7 @@ __all__ = [
 # 1.  Material / shot parameter container
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ShotPeenParams:
     """All physical parameters for a single shot-peening impact.
@@ -113,7 +114,7 @@ class ShotPeenParams:
     E_b: float = 113.8e9
     nu_b: float = 0.34
     sigma_yield: float = 276e6
-    c: float = 3.0e9          # bilinear hardening slope
+    c: float = 3.0e9  # bilinear hardening slope
 
     # Impact
     V: float = 35.9
@@ -136,7 +137,7 @@ class ShotPeenParams:
     @property
     def Ms(self) -> float:
         """Shot mass (kg)."""
-        return (4.0 / 3.0) * math.pi * self.R ** 3 * self.rho_s
+        return (4.0 / 3.0) * math.pi * self.R**3 * self.rho_s
 
     @property
     def Vn(self) -> float:
@@ -147,6 +148,7 @@ class ShotPeenParams:
 # ---------------------------------------------------------------------------
 # 2.  Structured quad / hex mesh generator
 # ---------------------------------------------------------------------------
+
 
 def generate_mesh(
     Lx: float = 0.005,
@@ -179,7 +181,7 @@ def generate_mesh(
 
     if Nz == 1:
         # ---- 2-D surface mesh ----------------------------------------
-        xx, yy = np.meshgrid(xs, ys, indexing="ij")      # (Nx+1, Ny+1)
+        xx, yy = np.meshgrid(xs, ys, indexing="ij")  # (Nx+1, Ny+1)
         zz = np.zeros_like(xx)
         coords = np.stack([xx.ravel(), yy.ravel(), zz.ravel()], axis=1)  # (N, 3)
 
@@ -193,24 +195,22 @@ def generate_mesh(
         quads = []
         for ix in range(Nx):
             for iy in range(Ny):
-                n0 = node_id(ix,     iy)
+                n0 = node_id(ix, iy)
                 n1 = node_id(ix + 1, iy)
                 n2 = node_id(ix + 1, iy + 1)
-                n3 = node_id(ix,     iy + 1)
+                n3 = node_id(ix, iy + 1)
                 quads.append([labels[n0], labels[n1], labels[n2], labels[n3]])
 
-        connectivity = np.array(quads, dtype=np.int32)   # (Nx*Ny, 4)
+        connectivity = np.array(quads, dtype=np.int32)  # (Nx*Ny, 4)
         elem_labels = np.arange(1, len(quads) + 1, dtype=np.int32)
 
         impact_center = np.array([Lx / 2.0, Ly / 2.0, 0.0])
 
     else:
         # ---- 3-D hex mesh --------------------------------------------
-        zs = np.linspace(0.0, -Lz, Nz + 1, dtype=np.float32)   # z goes downward (negative)
-        xx, yy, zz = np.meshgrid(xs, ys, zs, indexing="ij")     # (Nx+1, Ny+1, Nz+1)
-        coords = np.stack(
-            [xx.ravel(), yy.ravel(), zz.ravel()], axis=1
-        ).astype(np.float32)
+        zs = np.linspace(0.0, -Lz, Nz + 1, dtype=np.float32)  # z goes downward (negative)
+        xx, yy, zz = np.meshgrid(xs, ys, zs, indexing="ij")  # (Nx+1, Ny+1, Nz+1)
+        coords = np.stack([xx.ravel(), yy.ravel(), zz.ravel()], axis=1).astype(np.float32)
 
         N = coords.shape[0]
         labels = np.arange(1, N + 1, dtype=np.int32)
@@ -219,21 +219,21 @@ def generate_mesh(
         nNz1 = Nz + 1
 
         def node_id3(ix, iy, iz):
-            return ix * nNy1 * nNz1 + iy * nNz1 + iz   # 0-based
+            return ix * nNy1 * nNz1 + iy * nNz1 + iz  # 0-based
 
         hexes = []
         for ix in range(Nx):
             for iy in range(Ny):
                 for iz in range(Nz):
                     n = [
-                        node_id3(ix,     iy,     iz),
-                        node_id3(ix + 1, iy,     iz),
+                        node_id3(ix, iy, iz),
+                        node_id3(ix + 1, iy, iz),
                         node_id3(ix + 1, iy + 1, iz),
-                        node_id3(ix,     iy + 1, iz),
-                        node_id3(ix,     iy,     iz + 1),
-                        node_id3(ix + 1, iy,     iz + 1),
+                        node_id3(ix, iy + 1, iz),
+                        node_id3(ix, iy, iz + 1),
+                        node_id3(ix + 1, iy, iz + 1),
                         node_id3(ix + 1, iy + 1, iz + 1),
-                        node_id3(ix,     iy + 1, iz + 1),
+                        node_id3(ix, iy + 1, iz + 1),
                     ]
                     hexes.append([labels[k] for k in n])
 
@@ -254,6 +254,7 @@ def generate_mesh(
 # 3.  Hertzian contact parameters   (Eqs 1-8)
 # ---------------------------------------------------------------------------
 
+
 def compute_contact_params(params: ShotPeenParams) -> Dict[str, float]:
     """Compute Hertzian contact parameters.
 
@@ -272,24 +273,19 @@ def compute_contact_params(params: ShotPeenParams) -> Dict[str, float]:
     E_eq = 1.0 / ((1.0 - p.nu_s) / p.E_s + (1.0 - p.nu_b) / p.E_b)
 
     # Eq 2: elastic contact radius
-    ae = p.R * ((5.0 * math.pi * p.k * p.rho_s * p.Vn ** 2) / (4.0 * E_eq)) ** (1.0 / 5.0)
+    ae = p.R * ((5.0 * math.pi * p.k * p.rho_s * p.Vn**2) / (4.0 * E_eq)) ** (1.0 / 5.0)
 
     # Impact time (Hertz, Johnson 1985)
-    t = (
-        2.87
-        * (1.0 - p.nu_s ** 2)
-        * 0.4
-        * (p.Ms ** 2 / (p.R * p.E_s ** 2 * p.Vn)) ** 0.2
-    )
+    t = 2.87 * (1.0 - p.nu_s**2) * 0.4 * (p.Ms**2 / (p.R * p.E_s**2 * p.Vn)) ** 0.2
 
     # Average contact force
     F = p.Ms * 2.0 * p.Vn / t
 
     # Peak Hertz pressure
-    p0 = (1.0 / math.pi) * (6.0 * F * E_eq ** 2 / p.R ** 2) ** (1.0 / 3.0)
+    p0 = (1.0 / math.pi) * (6.0 * F * E_eq**2 / p.R**2) ** (1.0 / 3.0)
 
     # Maximum indentation depth (Hertz)
-    delta = ae ** 2 / p.R
+    delta = ae**2 / p.R
 
     return {"E_eq": E_eq, "ae": ae, "p0": p0, "F": F, "t": t, "delta": delta}
 
@@ -298,9 +294,8 @@ def compute_contact_params(params: ShotPeenParams) -> Dict[str, float]:
 # 4.  Elastic stress field + elastic-plastic loading (Eqs 4-26)
 # ---------------------------------------------------------------------------
 
-def compute_stress_field(
-    contact: Dict[str, float], params: ShotPeenParams
-) -> Dict[str, np.ndarray]:
+
+def compute_stress_field(contact: Dict[str, float], params: ShotPeenParams) -> Dict[str, np.ndarray]:
     """Compute the through-depth stress field during loading and after unloading.
 
     Follows Shen & Atluri (2006) Equations 4–26, then residual stress Eqs 27–36.
@@ -327,20 +322,20 @@ def compute_stress_field(
         sR          : (n,) residual stress σR (Pa)  (Eq 35)
     """
     p = params
-    ae  = contact["ae"]
-    p0  = contact["p0"]
+    ae = contact["ae"]
+    p0 = contact["p0"]
     E_b = p.E_b
     nu_b = p.nu_b
-    sy  = p.sigma_yield
-    c   = p.c
+    sy = p.sigma_yield
+    c = p.c
 
     # Depth axis
-    Z     = np.linspace(ae / 1000.0, params.depth_max_factor * ae, params.n_depth)
+    Z = np.linspace(ae / 1000.0, params.depth_max_factor * ae, params.n_depth)
     Z_bar = Z / ae
 
     # ---- Hertz elastic stress field under contact centre ---- #
     # Eq 5a, 5b
-    A = 1.0 / (1.0 + Z_bar ** 2)
+    A = 1.0 / (1.0 + Z_bar**2)
     B = 1.0 - Z_bar * np.arctan(1.0 / Z_bar)
 
     # Eq 4
@@ -351,12 +346,12 @@ def compute_stress_field(
     sigma_eqe = sigma_xe - sigma_ze
 
     # ---- Elastic strains (Eq 7a, 7b, 8) ---- #
-    epsilon_xe = (1.0 / E_b) * (sigma_xe * (1.0 - nu_b) - nu_b * sigma_xe)   # Eq 7a  # noqa: F841
-    epsilon_ze = (1.0 / E_b) * (sigma_ze - 2.0 * sigma_xe * nu_b)             # Eq 7b  # noqa: F841
+    epsilon_xe = (1.0 / E_b) * (sigma_xe * (1.0 - nu_b) - nu_b * sigma_xe)  # Eq 7a  # noqa: F841
+    epsilon_ze = (1.0 / E_b) * (sigma_ze - 2.0 * sigma_xe * nu_b)  # Eq 7b  # noqa: F841
 
     # ---- Plastic loading (Eq 20, 21) ---- #
     # Eq 20: plastic strain during loading
-    disc_load = sy ** 2 + (3.0 * c / (2.0 * E_b)) * sigma_eqe ** 2
+    disc_load = sy**2 + (3.0 * c / (2.0 * E_b)) * sigma_eqe**2
     disc_load = np.maximum(disc_load, 0.0)
     eps_load_p = (np.sqrt(disc_load) - sy) / (3.0 * c)
     eps_load_p = np.maximum(eps_load_p, 0.0)
@@ -366,7 +361,7 @@ def compute_stress_field(
 
     # ---- Unloading (Eq 26, 23, 30) ---- #
     # Eq 26: equivalent plastic strain at unloading
-    disc_unload = 4.0 * sy ** 2 + (3.0 * c / (2.0 * E_b)) * sigma_eqe ** 2
+    disc_unload = 4.0 * sy**2 + (3.0 * c / (2.0 * E_b)) * sigma_eqe**2
     disc_unload = np.maximum(disc_unload, 0.0)
     exup = (np.sqrt(disc_unload) - 2.0 * sy) / (3.0 * c)
     exup = np.maximum(exup, 0.0)
@@ -380,45 +375,46 @@ def compute_stress_field(
     # ---- Residual stress (Eqs 22, 35, 47a/b) ---- #
     # Scale factor Phi = ratio of average plastic strain to its maximum
     eps_Mp_approx = np.max(eps_load_p) if np.max(eps_load_p) > 0 else 1.0
-    Phi = eps_Mp_approx / eps_Mp_approx   # will be updated after plastic zone computed  # noqa: F841
+    Phi = eps_Mp_approx / eps_Mp_approx  # will be updated after plastic zone computed  # noqa: F841
 
     eps_avg = np.zeros_like(sigma_eqe)
-    sxs     = np.zeros_like(sigma_eqe)
+    sxs = np.zeros_like(sigma_eqe)
 
     mask_above_2sy = sigma_eqe > 2.0 * sy
-    mask_between   = (sigma_eqe > sy) & (sigma_eqe <= 2.0 * sy)
+    mask_between = (sigma_eqe > sy) & (sigma_eqe <= 2.0 * sy)
 
     # Eq 47b: deeply loaded zone
     eps_avg[mask_above_2sy] = eps_load_p[mask_above_2sy] - exup[mask_above_2sy]
-    sxs[mask_above_2sy]     = Sxu[mask_above_2sy]                     # Eq 22
+    sxs[mask_above_2sy] = Sxu[mask_above_2sy]  # Eq 22
 
     # Eq 47a: partially loaded zone
-    eps_avg[mask_between]   = eps_load_p[mask_between]
-    sxs[mask_between]       = Sxl[mask_between] - sigma_eqe[mask_between] / 3.0  # Eq 22
+    eps_avg[mask_between] = eps_load_p[mask_between]
+    sxs[mask_between] = Sxl[mask_between] - sigma_eqe[mask_between] / 3.0  # Eq 22
 
     # Eq 35: residual stress in x (= y by biaxial symmetry)
     sR = (sxs * (1.0 + nu_b) / (1.0 - nu_b) - E_b * eps_avg / (1.0 - nu_b)) / 2.0
 
     return {
-        "Z":            Z,
-        "Z_bar":        Z_bar,
-        "sigma_xe":     sigma_xe,
-        "sigma_ze":     sigma_ze,
-        "sigma_eqe":    sigma_eqe,
-        "eps_load_p":   eps_load_p,
+        "Z": Z,
+        "Z_bar": Z_bar,
+        "sigma_xe": sigma_xe,
+        "sigma_ze": sigma_ze,
+        "sigma_eqe": sigma_eqe,
+        "eps_load_p": eps_load_p,
         "eps_unload_p": exup,
-        "Sxl":          Sxl,
-        "Sxu":          Sxu,
-        "eps_s":        eps_s,
-        "eps_avg":      eps_avg,
-        "sxs":          sxs,
-        "sR":           sR,
+        "Sxl": Sxl,
+        "Sxu": Sxu,
+        "eps_s": eps_s,
+        "eps_avg": eps_avg,
+        "sxs": sxs,
+        "sR": sR,
     }
 
 
 # ---------------------------------------------------------------------------
 # 5.  Plastic zone geometry  (Eqs 41-45)
 # ---------------------------------------------------------------------------
+
 
 def compute_plastic_zone(params: ShotPeenParams) -> Dict[str, float]:
     """Compute plastic zone geometry from Shen & Atluri Eqs 41-45.
@@ -435,32 +431,33 @@ def compute_plastic_zone(params: ShotPeenParams) -> Dict[str, float]:
     p = params
 
     # Eq 44: dent (contact imprint) radius
-    a_p = p.D * (p.rho_s * p.Vn ** 2 / (18.0 * p.sigma_yield)) ** (1.0 / 4.0)
+    a_p = p.D * (p.rho_s * p.Vn**2 / (18.0 * p.sigma_yield)) ** (1.0 / 4.0)
 
     # Eq 43: plastic zone radius
     r_p = a_p * (2.0 * p.E_b / (3.0 * p.sigma_yield)) ** (1.0 / 3.0)
 
     # Eq 45: mean plastic strain in zone
-    epsilon_Mp = (9.0 / 4.0) * a_p ** 4 / (p.D * r_p ** 3)
+    epsilon_Mp = (9.0 / 4.0) * a_p**4 / (p.D * r_p**3)
 
     # Eq 42: plastic zone volume (hemisphere)
-    V_p = (2.0 * math.pi / 3.0) * r_p ** 3
+    V_p = (2.0 * math.pi / 3.0) * r_p**3
 
     # Eq 41: total plastic strain energy
     W_t = V_p * p.sigma_yield * epsilon_Mp
 
     return {
-        "a_p":        a_p,
-        "r_p":        r_p,
+        "a_p": a_p,
+        "r_p": r_p,
         "epsilon_Mp": epsilon_Mp,
-        "V_p":        V_p,
-        "W_t":        W_t,
+        "V_p": V_p,
+        "W_t": W_t,
     }
 
 
 # ---------------------------------------------------------------------------
 # 6.  Energy balance
 # ---------------------------------------------------------------------------
+
 
 def compute_energy_balance(
     params: ShotPeenParams,
@@ -480,28 +477,29 @@ def compute_energy_balance(
     -------
     dict: KE_initial, W_plastic, KE_rebound, W_wave, e (COR)
     """
-    KE_initial = 0.5 * params.Ms * params.V ** 2
-    W_t        = plastic["W_t"]
+    KE_initial = 0.5 * params.Ms * params.V**2
+    W_t = plastic["W_t"]
 
     ratio = min(W_t / KE_initial, 1.0) if KE_initial > 0 else 0.0
-    e     = math.sqrt(max(0.0, 1.0 - ratio))
+    e = math.sqrt(max(0.0, 1.0 - ratio))
 
-    KE_rebound = e ** 2 * KE_initial
-    W_wave     = max(0.0, KE_initial - W_t - KE_rebound)
+    KE_rebound = e**2 * KE_initial
+    W_wave = max(0.0, KE_initial - W_t - KE_rebound)
 
     return {
-        "KE_initial":  KE_initial,
-        "W_plastic":   W_t,
-        "KE_rebound":  KE_rebound,
-        "W_wave":      W_wave,
-        "e":           e,
-        "COR":         e,
+        "KE_initial": KE_initial,
+        "W_plastic": W_t,
+        "KE_rebound": KE_rebound,
+        "W_wave": W_wave,
+        "e": e,
+        "COR": e,
     }
 
 
 # ---------------------------------------------------------------------------
 # 7.  Map displacements to mesh nodes
 # ---------------------------------------------------------------------------
+
 
 def map_displacements(
     mesh: Dict[str, np.ndarray],
@@ -541,39 +539,35 @@ def map_displacements(
     node_labels   : (N,) int32
     displacements : (N, 3) float32  — [ux, uy, uz]
     """
-    coords = mesh["node_coords"]                          # (N, 3)
+    coords = mesh["node_coords"]  # (N, 3)
     labels = mesh["node_labels"]
-    ic     = impact_center if impact_center is not None else mesh["impact_center"]
+    ic = impact_center if impact_center is not None else mesh["impact_center"]
 
     a_p = plastic["a_p"]
     r_p = plastic["r_p"]
-    delta_p = a_p ** 2 / (2.0 * params.R)               # permanent indentation depth
+    delta_p = a_p**2 / (2.0 * params.R)  # permanent indentation depth
 
     dx = coords[:, 0] - ic[0]
     dy = coords[:, 1] - ic[1]
-    r  = np.sqrt(dx ** 2 + dy ** 2)                     # radial distance
+    r = np.sqrt(dx**2 + dy**2)  # radial distance
 
     # Surface normal displacement (uz, negative = into material)
     uz = np.zeros(len(labels), dtype=np.float64)
 
-    mask_dent       = r <= a_p
+    mask_dent = r <= a_p
     mask_transition = (r > a_p) & (r <= r_p)
 
     uz[mask_dent] = -delta_p * (1.0 - (r[mask_dent] / a_p) ** 2)
-    uz[mask_transition] = (
-        -delta_p
-        * (a_p / r[mask_transition]) ** 2
-        * np.exp(-(r[mask_transition] - a_p) / a_p)
-    )
+    uz[mask_transition] = -delta_p * (a_p / r[mask_transition]) ** 2 * np.exp(-(r[mask_transition] - a_p) / a_p)
 
     # Radial bulge displacement (ur, outward)
     safe_rp = r_p if r_p > 0 else 1e-12
-    ur = (2.0 / 3.0) * delta_p * (r / safe_rp) * np.exp(-(r / safe_rp) ** 2)
+    ur = (2.0 / 3.0) * delta_p * (r / safe_rp) * np.exp(-((r / safe_rp) ** 2))
 
     # Decompose radial into x, y (handle r=0 safely)
     safe_r = np.where(r > 0, r, 1.0)
-    cos_t  = np.where(r > 0, dx / safe_r, 0.0)
-    sin_t  = np.where(r > 0, dy / safe_r, 0.0)
+    cos_t = np.where(r > 0, dx / safe_r, 0.0)
+    sin_t = np.where(r > 0, dy / safe_r, 0.0)
 
     ux = ur * cos_t
     uy = ur * sin_t
@@ -585,6 +579,7 @@ def map_displacements(
 # ---------------------------------------------------------------------------
 # 8.  Map stresses to mesh elements
 # ---------------------------------------------------------------------------
+
 
 def map_stresses(
     mesh: Dict[str, np.ndarray],
@@ -617,12 +612,12 @@ def map_stresses(
     elem_labels : (E,) int32
     stresses    : (E, 4) float32  — [S11, S22, S33, S12]
     """
-    coords_n   = mesh["node_coords"]                # (N, 3)
-    labels_n   = mesh["node_labels"]
+    coords_n = mesh["node_coords"]  # (N, 3)
+    labels_n = mesh["node_labels"]
     label_to_idx = {int(lbl): i for i, lbl in enumerate(labels_n)}
 
-    connectivity = mesh["element_connectivity"]     # (E, 4) or (E, 8)
-    elem_labels  = mesh["element_labels"]
+    connectivity = mesh["element_connectivity"]  # (E, 4) or (E, 8)
+    elem_labels = mesh["element_labels"]
 
     ic = impact_center if impact_center is not None else mesh["impact_center"]
 
@@ -633,16 +628,16 @@ def map_stresses(
         node_idxs = [label_to_idx[int(nl)] for nl in row if int(nl) in label_to_idx]
         centroids[e] = coords_n[node_idxs].mean(axis=0)
 
-    Z_prof = stress_field["Z"]       # depth array
-    sR_prof = stress_field["sR"]     # residual stress profile
+    Z_prof = stress_field["Z"]  # depth array
+    sR_prof = stress_field["sR"]  # residual stress profile
 
-    r_p    = plastic["r_p"]
-    a_p    = plastic["a_p"]  # noqa: F841
+    r_p = plastic["r_p"]
+    a_p = plastic["a_p"]  # noqa: F841
 
     # Radial distance of each element centroid from impact point
     dx = centroids[:, 0] - ic[0]
     dy = centroids[:, 1] - ic[1]
-    r_elem = np.sqrt(dx ** 2 + dy ** 2)
+    r_elem = np.sqrt(dx**2 + dy**2)
 
     # Depth of element centroid (positive downward)
     z_elem = np.abs(centroids[:, 2])
@@ -652,7 +647,7 @@ def map_stresses(
 
     # Radial Gaussian attenuation centred on plastic zone
     sigma_r = r_p / 2.0 if r_p > 0 else 1e-12
-    G_r = np.exp(-(r_elem ** 2) / (2.0 * sigma_r ** 2))
+    G_r = np.exp(-(r_elem**2) / (2.0 * sigma_r**2))
 
     # Only apply within influence zone (r ≤ 3 r_p)
     G_r[r_elem > 3.0 * r_p] = 0.0
@@ -662,13 +657,14 @@ def map_stresses(
     S33 = np.zeros(n_elem, dtype=np.float32)
     S12 = np.zeros(n_elem, dtype=np.float32)
 
-    stresses = np.stack([S11, S22, S33, S12], axis=1)   # (E, 4)
+    stresses = np.stack([S11, S22, S33, S12], axis=1)  # (E, 4)
     return elem_labels, stresses
 
 
 # ---------------------------------------------------------------------------
 # 9.  Main simulation runner
 # ---------------------------------------------------------------------------
+
 
 def run_simulation(
     params: Optional[ShotPeenParams] = None,
@@ -733,7 +729,9 @@ def run_simulation(
     # ---- Plastic zone ----
     _log("[4/6] Computing plastic zone geometry …")
     plastic = compute_plastic_zone(params)
-    _log(f"      a_p = {plastic['a_p']*1e6:.3f} µm  |  r_p = {plastic['r_p']*1e6:.3f} µm  |  W_t = {plastic['W_t']*1e6:.4f} µJ")
+    _log(
+        f"      a_p = {plastic['a_p']*1e6:.3f} µm  |  r_p = {plastic['r_p']*1e6:.3f} µm  |  W_t = {plastic['W_t']*1e6:.4f} µJ"
+    )
 
     # Update Phi now that we know epsilon_Mp
     max_load_p = np.max(stress_field["eps_load_p"])
@@ -743,8 +741,7 @@ def run_simulation(
         stress_field["eps_avg"] *= Phi
         nu_b, E_b = params.nu_b, params.E_b
         stress_field["sR"] = (
-            stress_field["sxs"] * (1.0 + nu_b) / (1.0 - nu_b)
-            - E_b * stress_field["eps_avg"] / (1.0 - nu_b)
+            stress_field["sxs"] * (1.0 + nu_b) / (1.0 - nu_b) - E_b * stress_field["eps_avg"] / (1.0 - nu_b)
         ) / 2.0
 
     # ---- Energy balance ----
@@ -752,34 +749,39 @@ def run_simulation(
     energy = compute_energy_balance(params, contact, plastic)
     _log(f"      KE_initial = {energy['KE_initial']*1e6:.4f} µJ")
     _log(f"      W_plastic  = {energy['W_plastic']*1e6:.4f} µJ  ({100*energy['W_plastic']/energy['KE_initial']:.1f}%)")
-    _log(f"      KE_rebound = {energy['KE_rebound']*1e6:.4f} µJ  ({100*energy['KE_rebound']/energy['KE_initial']:.1f}%)")
+    _log(
+        f"      KE_rebound = {energy['KE_rebound']*1e6:.4f} µJ  ({100*energy['KE_rebound']/energy['KE_initial']:.1f}%)"
+    )
     _log(f"      W_wave     = {energy['W_wave']*1e6:.4f} µJ      ({100*energy['W_wave']/energy['KE_initial']:.1f}%)")
     _log(f"      COR (e)    = {energy['e']:.4f}")
 
     # ---- Map to mesh ----
     _log("[6/6] Mapping fields onto mesh …")
     disp_node_labels, displacements = map_displacements(mesh, contact, plastic, params)
-    stress_elem_labels, stresses    = map_stresses(mesh, stress_field, plastic, params)
+    stress_elem_labels, stresses = map_stresses(mesh, stress_field, plastic, params)
 
     # ---- Save .npy files ----
     if save_npy:
         os.makedirs(output_dir, exist_ok=True)
         _log(f"      Saving .npy files to: {output_dir}")
 
-        np.save(os.path.join(output_dir, "node_labels.npy"),          mesh["node_labels"])
-        np.save(os.path.join(output_dir, "node_coords.npy"),          mesh["node_coords"])
-        np.save(os.path.join(output_dir, "element_labels.npy"),       mesh["element_labels"])
+        np.save(os.path.join(output_dir, "node_labels.npy"), mesh["node_labels"])
+        np.save(os.path.join(output_dir, "node_coords.npy"), mesh["node_coords"])
+        np.save(os.path.join(output_dir, "element_labels.npy"), mesh["element_labels"])
         np.save(os.path.join(output_dir, "element_connectivity.npy"), mesh["element_connectivity"])
-        np.save(os.path.join(output_dir, "disp_node_labels.npy"),     disp_node_labels)
-        np.save(os.path.join(output_dir, "displacements.npy"),        displacements)
+        np.save(os.path.join(output_dir, "disp_node_labels.npy"), disp_node_labels)
+        np.save(os.path.join(output_dir, "displacements.npy"), displacements)
         np.save(os.path.join(output_dir, "stress_element_labels.npy"), stress_elem_labels)
-        np.save(os.path.join(output_dir, "stresses.npy"),             stresses)
+        np.save(os.path.join(output_dir, "stresses.npy"), stresses)
 
         # Also save depth profile for post-processing
-        np.save(os.path.join(output_dir, "sR_depth_profile.npy"),
-                np.stack([stress_field["Z"], stress_field["sR"]], axis=1))
-        np.save(os.path.join(output_dir, "sigma_eqe_profile.npy"),
-                np.stack([stress_field["Z_bar"], stress_field["sigma_eqe"]], axis=1))
+        np.save(
+            os.path.join(output_dir, "sR_depth_profile.npy"), np.stack([stress_field["Z"], stress_field["sR"]], axis=1)
+        )
+        np.save(
+            os.path.join(output_dir, "sigma_eqe_profile.npy"),
+            np.stack([stress_field["Z_bar"], stress_field["sigma_eqe"]], axis=1),
+        )
 
         # Energy balance as a simple CSV-style text file
         energy_path = os.path.join(output_dir, "energy_balance.txt")
@@ -796,24 +798,25 @@ def run_simulation(
     _log("=" * 60)
 
     return {
-        "params":             params,
-        "mesh":               mesh,
-        "contact":            contact,
-        "stress_field":       stress_field,
-        "plastic":            plastic,
-        "energy":             energy,
-        "node_labels":        mesh["node_labels"],
-        "elem_labels":        mesh["element_labels"],
-        "disp_node_labels":   disp_node_labels,
-        "displacements":      displacements,
+        "params": params,
+        "mesh": mesh,
+        "contact": contact,
+        "stress_field": stress_field,
+        "plastic": plastic,
+        "energy": energy,
+        "node_labels": mesh["node_labels"],
+        "elem_labels": mesh["element_labels"],
+        "disp_node_labels": disp_node_labels,
+        "displacements": displacements,
         "stress_elem_labels": stress_elem_labels,
-        "stresses":           stresses,
+        "stresses": stresses,
     }
 
 
 # ---------------------------------------------------------------------------
 # 10.  Stand-alone plotting of the residual stress profile
 # ---------------------------------------------------------------------------
+
 
 def plot_residual_stress(
     results: Dict,
@@ -835,11 +838,11 @@ def plot_residual_stress(
     """
     import matplotlib.pyplot as plt
 
-    sf  = results["stress_field"]
-    en  = results["energy"]
+    sf = results["stress_field"]
+    en = results["energy"]
 
     Z_bar = sf["Z_bar"]
-    sR    = sf["sR"]
+    sR = sf["sR"]
     eps_avg = sf["eps_avg"]
 
     fig, axs = plt.subplots(1, 3, figsize=(14, 4))
@@ -864,9 +867,9 @@ def plot_residual_stress(
     labels_e = ["KE initial", "W plastic", "KE rebound", "W wave"]
     values_e = [
         en["KE_initial"] * 1e6,
-        en["W_plastic"]  * 1e6,
+        en["W_plastic"] * 1e6,
         en["KE_rebound"] * 1e6,
-        en["W_wave"]     * 1e6,
+        en["W_wave"] * 1e6,
     ]
     colors_e = ["royalblue", "firebrick", "seagreen", "goldenrod"]
     bars = axs[2].bar(labels_e, values_e, color=colors_e, edgecolor="k", linewidth=0.5)
@@ -892,12 +895,12 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Run a single shot-peen impact simulation.")
     parser.add_argument("--output", default="./impact_sim_output", help="Output directory")
-    parser.add_argument("--V",     type=float, default=35.9, help="Impact velocity (m/s)")
-    parser.add_argument("--D",     type=float, default=0.0005, help="Shot diameter (m)")
-    parser.add_argument("--Nx",    type=int,   default=10, help="Elements in X")
-    parser.add_argument("--Ny",    type=int,   default=10, help="Elements in Y")
-    parser.add_argument("--Nz",    type=int,   default=1,  help="Layers in Z (1=surface)")
-    parser.add_argument("--plot",  action="store_true",    help="Show result plots")
+    parser.add_argument("--V", type=float, default=35.9, help="Impact velocity (m/s)")
+    parser.add_argument("--D", type=float, default=0.0005, help="Shot diameter (m)")
+    parser.add_argument("--Nx", type=int, default=10, help="Elements in X")
+    parser.add_argument("--Ny", type=int, default=10, help="Elements in Y")
+    parser.add_argument("--Nz", type=int, default=1, help="Layers in Z (1=surface)")
+    parser.add_argument("--plot", action="store_true", help="Show result plots")
     args = parser.parse_args()
 
     p = ShotPeenParams(V=args.V, D=args.D)

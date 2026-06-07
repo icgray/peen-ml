@@ -37,8 +37,8 @@ MAT_DIM = 7
 
 # Fixed normalisation bounds — log10 for large-range columns, linear for nu
 # Order: [E_b, nu_b, sigma_yield, c, E_s, nu_s, rho_s]
-_MAT_LOG_IDX = [0, 2, 3, 4, 6]   # E_b, sigma_yield, c, E_s, rho_s
-_MAT_LIN_IDX = [1, 5]             # nu_b, nu_s
+_MAT_LOG_IDX = [0, 2, 3, 4, 6]  # E_b, sigma_yield, c, E_s, rho_s
+_MAT_LIN_IDX = [1, 5]  # nu_b, nu_s
 _MAT_LO = np.array([10.85, 0.22, 8.44, 9.07, 10.85, 0.22, 3.30], dtype=np.float32)
 _MAT_HI = np.array([11.31, 0.45, 9.05, 9.61, 11.62, 0.35, 4.30], dtype=np.float32)
 
@@ -52,7 +52,7 @@ SHOT_FEATURE_KEYS = ["V_m_per_s", "D_mm", "n_shots"]
 SHOT_DIM = 3
 FULL_COND_DIM = MAT_DIM + SHOT_DIM  # 10
 _SHOT_LO = np.array([1.000, -1.000, 1.301], dtype=np.float32)
-_SHOT_HI = np.array([1.903,  0.176, 2.602], dtype=np.float32)
+_SHOT_HI = np.array([1.903, 0.176, 2.602], dtype=np.float32)
 
 
 def normalize_mat_features(raw: np.ndarray) -> np.ndarray:
@@ -100,7 +100,7 @@ def _parse_material_block(sim_dir: str) -> Optional[dict]:
                 in_block = True
                 continue
             if in_block:
-                if line.startswith("["):   # next section
+                if line.startswith("["):  # next section
                     break
                 if "=" in line:
                     key, _, val = line.partition("=")
@@ -165,17 +165,14 @@ def _load_sim_conditioning(sim_dir: str, include_shot_params: bool = True) -> np
 
 
 # Default material feature vector (ShotPeenParams defaults — used for legacy datasets)
-_DEFAULT_MAT_RAW = np.array(
-    [113.8e9, 0.34, 276e6, 3.0e9, 210e9, 0.30, 2000.0], dtype=np.float32
-)
+_DEFAULT_MAT_RAW = np.array([113.8e9, 0.34, 276e6, 3.0e9, 210e9, 0.30, 2000.0], dtype=np.float32)
 _DEFAULT_MAT_NORM = normalize_mat_features(_DEFAULT_MAT_RAW)
 
 
 # 1. Load All Numpy Files Function
-def load_all_npy_files(base_folder,
-                        load_files=("checkerboard", "displacements"),
-                          skip_missing=True,
-                          load_material_features=False):
+def load_all_npy_files(
+    base_folder, load_files=("checkerboard", "displacements"), skip_missing=True, load_material_features=False
+):
     """
     Load specified .npy files from multiple simulation folders.
 
@@ -190,7 +187,8 @@ def load_all_npy_files(base_folder,
     """
     # Find all folders matching the pattern "Simulation_\d+"
     simulation_folders = [
-        folder for folder in os.listdir(base_folder)
+        folder
+        for folder in os.listdir(base_folder)
         if os.path.isdir(os.path.join(base_folder, folder)) and folder.startswith("Simulation_")
     ]
 
@@ -235,6 +233,7 @@ def load_all_npy_files(base_folder,
     print("All specified data loaded and stacked successfully!")
     return stacked_data
 
+
 # 2. Dataset Classes
 class CheckerboardDataset(Dataset):
     """
@@ -249,12 +248,13 @@ class CheckerboardDataset(Dataset):
             are kept in their original physical units (metres).  Always pass the training-set
             scale to val/test/inference datasets so all splits share the same scaling.
     """
+
     def __init__(self, checkerboards, displacements, mat_features=None, disp_scale=None):
         self.checkerboards = checkerboards
-        self.disp_scale    = float(disp_scale) if disp_scale is not None else 1.0
+        self.disp_scale = float(disp_scale) if disp_scale is not None else 1.0
         # Store raw displacements divided by scale.  Division by 1.0 is a no-op.
         self.displacements = displacements / self.disp_scale
-        self.mat_features  = mat_features  # (N, 7) float32 or None
+        self.mat_features = mat_features  # (N, 7) float32 or None
 
     def __len__(self):
         """Returns the total number of samples in the dataset."""
@@ -276,6 +276,7 @@ class CheckerboardDataset(Dataset):
             return checkerboard, mat, displacement
         return checkerboard, displacement
 
+
 class NormalizedDataset(Dataset):
     """
     A wrapper for normalizing datasets. Takes a base dataset and applies normalization to its features.
@@ -287,6 +288,7 @@ class NormalizedDataset(Dataset):
             so that val/test/inference inputs are normalized identically to training.
         max_val (float | None): Pre-computed maximum. Must be supplied together with min_val.
     """
+
     def __init__(self, base_dataset, min_val=None, max_val=None):
         self.base_dataset = base_dataset
         # Detect if this dataset has material features (3-tuple items)
@@ -325,6 +327,7 @@ class NormalizedDataset(Dataset):
         normalized_checkerboard = (checkerboard - self.min_val) / denom
         return normalized_checkerboard, displacement
 
+
 # 3. Attention Modules
 class ChannelAttention(nn.Module):
     """
@@ -334,6 +337,7 @@ class ChannelAttention(nn.Module):
         channels (int): Number of input channels.
         reduction (int): Reduction ratio for channel compression (default: 16).
     """
+
     def __init__(self, channels, reduction=16):
         super(ChannelAttention, self).__init__()
         self.fc1 = nn.Conv2d(channels, channels // reduction, kernel_size=1)
@@ -356,10 +360,12 @@ class ChannelAttention(nn.Module):
         scale = self.fc2(torch.relu(scale))
         return self.sigmoid(scale) * x
 
+
 class SpatialAttention(nn.Module):
     """
     Spatial Attention module for emphasizing relevant spatial regions.
     """
+
     def __init__(self):
         super(SpatialAttention, self).__init__()
         self.conv1 = nn.Conv2d(2, 1, kernel_size=7, padding=3)
@@ -380,6 +386,7 @@ class SpatialAttention(nn.Module):
         scale = torch.cat([avg_pool, max_pool], dim=1)
         return self.sigmoid(self.conv1(scale)) * x
 
+
 # 4. CNN Model with Attention
 class DisplacementPredictor(nn.Module):
     """
@@ -393,6 +400,7 @@ class DisplacementPredictor(nn.Module):
             The FC input size is computed as 128 * G * G automatically.
             Defaults to 5 (matches the original Abaqus dataset).
     """
+
     def __init__(self, input_channels, num_nodes, checkerboard_size=5, mat_dim=0):
         super(DisplacementPredictor, self).__init__()
 
@@ -435,7 +443,7 @@ class DisplacementPredictor(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(_fc_in, 512),
             nn.ReLU(),
-            nn.Linear(512, num_nodes * 3)  # Output size = num_nodes * 3 (displacement components)
+            nn.Linear(512, num_nodes * 3),  # Output size = num_nodes * 3 (displacement components)
         )
 
     def forward(self, x, mat=None):
@@ -473,6 +481,7 @@ class DisplacementPredictor(nn.Module):
         # Reshape output to (batch_size, num_nodes, 3)
         return x.view(x.size(0), -1, 3)
 
+
 # 4b. Improved CNN Model — deeper encoder, dropout, larger FC
 class ImprovedDisplacementPredictor(nn.Module):
     """4-block CNN encoder with dropout and larger FC for better generalisation.
@@ -484,8 +493,8 @@ class ImprovedDisplacementPredictor(nn.Module):
 
     Parameters match DisplacementPredictor for compatibility with train_model.
     """
-    def __init__(self, input_channels: int = 1, num_nodes: int = 2601,
-                 checkerboard_size: int = 10, mat_dim: int = 0):
+
+    def __init__(self, input_channels: int = 1, num_nodes: int = 2601, checkerboard_size: int = 10, mat_dim: int = 0):
         super().__init__()
         self.num_nodes = num_nodes
         self.checkerboard_size = checkerboard_size
@@ -499,18 +508,26 @@ class ImprovedDisplacementPredictor(nn.Module):
             )
 
         self.conv1 = _block(input_channels, 32)
-        self.ca1 = ChannelAttention(32);  self.sa1 = SpatialAttention()
+        self.ca1 = ChannelAttention(32)
+        self.sa1 = SpatialAttention()
         self.conv2 = _block(32, 64)
-        self.ca2 = ChannelAttention(64);  self.sa2 = SpatialAttention()
+        self.ca2 = ChannelAttention(64)
+        self.sa2 = SpatialAttention()
         self.conv3 = _block(64, 128)
-        self.ca3 = ChannelAttention(128); self.sa3 = SpatialAttention()
+        self.ca3 = ChannelAttention(128)
+        self.sa3 = SpatialAttention()
         self.conv4 = _block(128, 256)
-        self.ca4 = ChannelAttention(256); self.sa4 = SpatialAttention()
+        self.ca4 = ChannelAttention(256)
+        self.sa4 = SpatialAttention()
 
         _fc_in = 256 * checkerboard_size * checkerboard_size + mat_dim
         self.fc = nn.Sequential(
-            nn.Linear(_fc_in, 1024), nn.ReLU(inplace=True), nn.Dropout(0.2),
-            nn.Linear(1024, 512),   nn.ReLU(inplace=True), nn.Dropout(0.1),
+            nn.Linear(_fc_in, 1024),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.2),
+            nn.Linear(1024, 512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.1),
             nn.Linear(512, num_nodes * 3),
         )
 
@@ -572,20 +589,28 @@ class MultiTaskPredictor(nn.Module):
 
         # Shared encoder
         self.conv1 = _block(input_channels, 32)
-        self.ca1 = ChannelAttention(32);  self.sa1 = SpatialAttention()
+        self.ca1 = ChannelAttention(32)
+        self.sa1 = SpatialAttention()
         self.conv2 = _block(32, 64)
-        self.ca2 = ChannelAttention(64);  self.sa2 = SpatialAttention()
+        self.ca2 = ChannelAttention(64)
+        self.sa2 = SpatialAttention()
         self.conv3 = _block(64, 128)
-        self.ca3 = ChannelAttention(128); self.sa3 = SpatialAttention()
+        self.ca3 = ChannelAttention(128)
+        self.sa3 = SpatialAttention()
         self.conv4 = _block(128, 256)
-        self.ca4 = ChannelAttention(256); self.sa4 = SpatialAttention()
+        self.ca4 = ChannelAttention(256)
+        self.sa4 = SpatialAttention()
 
         _fc_in = 256 * checkerboard_size * checkerboard_size + mat_dim
 
         # Shared FC neck
         self.neck = nn.Sequential(
-            nn.Linear(_fc_in, 1024), nn.ReLU(inplace=True), nn.Dropout(0.2),
-            nn.Linear(1024, 512),   nn.ReLU(inplace=True), nn.Dropout(0.1),
+            nn.Linear(_fc_in, 1024),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.2),
+            nn.Linear(1024, 512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.1),
         )
 
         # Output heads
@@ -595,9 +620,7 @@ class MultiTaskPredictor(nn.Module):
         if predict_scalars:
             self.scalar_head = nn.Linear(512, 3)
 
-    def forward(
-        self, x: torch.Tensor, mat: Optional[torch.Tensor] = None
-    ) -> dict:
+    def forward(self, x: torch.Tensor, mat: Optional[torch.Tensor] = None) -> dict:
         """
         Returns
         -------
@@ -618,13 +641,9 @@ class MultiTaskPredictor(nn.Module):
         neck = self.neck(x)
 
         out: dict = {}
-        out["displacements"] = self.displacement_head(neck).view(
-            neck.size(0), self.num_nodes, 3
-        )
+        out["displacements"] = self.displacement_head(neck).view(neck.size(0), self.num_nodes, 3)
         if self.predict_stress:
-            out["stresses"] = self.stress_head(neck).view(
-                neck.size(0), self.num_nodes, 4
-            )
+            out["stresses"] = self.stress_head(neck).view(neck.size(0), self.num_nodes, 4)
         if self.predict_scalars:
             out["scalars"] = self.scalar_head(neck)
         return out
@@ -633,6 +652,7 @@ class MultiTaskPredictor(nn.Module):
 # ---------------------------------------------------------------------------
 # MultiTask Dataset and DataLoaders
 # ---------------------------------------------------------------------------
+
 
 class MultiTaskDataset(torch.utils.data.Dataset):
     """Dataset for MultiTaskPredictor.
@@ -647,10 +667,10 @@ class MultiTaskDataset(torch.utils.data.Dataset):
 
     def __init__(
         self,
-        physics_cb: np.ndarray,        # (N, C, G, G)
-        displacements: np.ndarray,     # (N, nodes, 3)
-        nodal_stresses: np.ndarray,    # (N, nodes, 4)
-        scalars: np.ndarray,           # (N, 3)
+        physics_cb: np.ndarray,  # (N, C, G, G)
+        displacements: np.ndarray,  # (N, nodes, 3)
+        nodal_stresses: np.ndarray,  # (N, nodes, 4)
+        scalars: np.ndarray,  # (N, 3)
         mat_features: Optional[np.ndarray] = None,  # (N, 7)
         disp_scale: float = 1.0,
         stress_scale: float = 1.0,
@@ -659,16 +679,12 @@ class MultiTaskDataset(torch.utils.data.Dataset):
         self.cb = torch.tensor(physics_cb, dtype=torch.float32)
         self.disp = torch.tensor(displacements / disp_scale, dtype=torch.float32)
         self.stress = torch.tensor(
-            nodal_stresses / stress_scale if stress_scale != 0 else nodal_stresses,
-            dtype=torch.float32
+            nodal_stresses / stress_scale if stress_scale != 0 else nodal_stresses, dtype=torch.float32
         )
         _scalar_scales = scalar_scales if scalar_scales is not None else np.ones(3)
         safe = np.where(np.abs(_scalar_scales) > 0, _scalar_scales, 1.0)
         self.scalars = torch.tensor(scalars / safe, dtype=torch.float32)
-        self.mat = (
-            torch.tensor(mat_features, dtype=torch.float32)
-            if mat_features is not None else None
-        )
+        self.mat = torch.tensor(mat_features, dtype=torch.float32) if mat_features is not None else None
 
     def __len__(self) -> int:
         return len(self.cb)
@@ -702,9 +718,13 @@ def create_multitask_data_loaders(
                        num_nodes, checkerboard_size, has_mat_features
     """
     sim_dirs = sorted(
-        [d for d in os.listdir(base_folder)
-         if os.path.isdir(os.path.join(base_folder, d))
-         and d.startswith("Simulation_") and d[len("Simulation_"):].isdigit()],
+        [
+            d
+            for d in os.listdir(base_folder)
+            if os.path.isdir(os.path.join(base_folder, d))
+            and d.startswith("Simulation_")
+            and d[len("Simulation_") :].isdigit()
+        ],
         key=lambda x: int(x.split("_")[1]),
     )
     if not sim_dirs:
@@ -722,10 +742,10 @@ def create_multitask_data_loaders(
         phys_path = os.path.join(sd, "checkerboard_physics.npy")
         dens_path = os.path.join(sd, "checkerboard.npy")
         if use_physics_cb and os.path.exists(phys_path):
-            cb = np.load(phys_path).astype(np.float32)   # (6, G, G)
+            cb = np.load(phys_path).astype(np.float32)  # (6, G, G)
         elif os.path.exists(dens_path):
             cb_2d = np.load(dens_path).astype(np.float32)  # (G, G)
-            cb = cb_2d[np.newaxis]                          # (1, G, G)
+            cb = cb_2d[np.newaxis]  # (1, G, G)
         else:
             continue
 
@@ -743,7 +763,11 @@ def create_multitask_data_loaders(
         cup_path = os.path.join(sd, "cupping.npy")
         cupping = float(np.load(cup_path)) if os.path.exists(cup_path) else 0.0
         peak_stress = float(ns[:, 0].min()) if ns.shape[0] > 0 else 0.0  # most compressive S11
-        coverage = float(np.load(os.path.join(sd, "coverage_report.txt")).read().split("coverage_fraction:")[1].split("\n")[0]) if False else 0.0
+        coverage = (
+            float(np.load(os.path.join(sd, "coverage_report.txt")).read().split("coverage_fraction:")[1].split("\n")[0])
+            if False
+            else 0.0
+        )
         # Simpler: read coverage from checkerboard_physics channel 4 mean
         if use_physics_cb and os.path.exists(phys_path):
             coverage = float(np.load(phys_path)[4].mean())
@@ -760,39 +784,44 @@ def create_multitask_data_loaders(
     if not all_cb:
         raise ValueError(f"No valid simulations found in {base_folder}")
 
-    cb_arr     = np.stack(all_cb,     axis=0)   # (N, C, G, G)
-    disp_arr   = np.stack(all_disp,   axis=0)   # (N, nodes, 3)
-    stress_arr = np.stack(all_stress, axis=0)   # (N, nodes, 4)
+    cb_arr = np.stack(all_cb, axis=0)  # (N, C, G, G)
+    disp_arr = np.stack(all_disp, axis=0)  # (N, nodes, 3)
+    stress_arr = np.stack(all_stress, axis=0)  # (N, nodes, 4)
     scalar_arr = np.stack(all_scalars, axis=0)  # (N, 3)
-    mat_arr    = np.stack(all_mat, axis=0) if all_mat else None
+    mat_arr = np.stack(all_mat, axis=0) if all_mat else None
 
-    input_channels    = cb_arr.shape[1]
-    num_nodes         = disp_arr.shape[1]
+    input_channels = cb_arr.shape[1]
+    num_nodes = disp_arr.shape[1]
     checkerboard_size = cb_arr.shape[-1]
 
     # Scale targets so all are O(1) during training.
     # Per-sim normalization equalizes gradient across the amplitude range (fixes the
     # high-dynamic-range collapse problem in 316L+ceramic, Inconel+W, 4340+cast_iron).
-    _per_sim_disp_scales = np.array([
-        float(np.abs(disp_arr[i]).max()) or 1.0
-        for i in range(len(disp_arr))
-    ], dtype=np.float64)
+    _per_sim_disp_scales = np.array(
+        [float(np.abs(disp_arr[i]).max()) or 1.0 for i in range(len(disp_arr))], dtype=np.float64
+    )
     # Normalize each sim by its own max in-place
     disp_arr = (disp_arr / _per_sim_disp_scales[:, np.newaxis, np.newaxis]).astype(np.float32)
     disp_scale = 1.0  # data is pre-normalised; MultiTaskDataset should not re-divide
 
     stress_scale = float(np.abs(stress_arr).max()) or 1.0
-    scalar_scales = np.array([
-        float(np.abs(scalar_arr[:, 0]).max()) or 1.0,   # cupping
-        float(np.abs(scalar_arr[:, 1]).max()) or 1.0,   # peak_stress
-        float(np.abs(scalar_arr[:, 2]).max()) or 1.0,   # coverage
-    ], dtype=np.float64)
+    scalar_scales = np.array(
+        [
+            float(np.abs(scalar_arr[:, 0]).max()) or 1.0,  # cupping
+            float(np.abs(scalar_arr[:, 1]).max()) or 1.0,  # peak_stress
+            float(np.abs(scalar_arr[:, 2]).max()) or 1.0,  # coverage
+        ],
+        dtype=np.float64,
+    )
 
     torch.manual_seed(2024)
     np.random.seed(2024)
 
     full_ds = MultiTaskDataset(
-        cb_arr, disp_arr, stress_arr, scalar_arr,
+        cb_arr,
+        disp_arr,
+        stress_arr,
+        scalar_arr,
         mat_features=mat_arr,
         disp_scale=disp_scale,
         stress_scale=stress_scale,
@@ -801,30 +830,28 @@ def create_multitask_data_loaders(
 
     n = len(full_ds)
     n_train = int(0.70 * n)
-    n_val   = int(0.15 * n)
-    n_test  = n - n_train - n_val
-    train_ds, val_ds, test_ds = torch.utils.data.random_split(
-        full_ds, [n_train, n_val, n_test]
-    )
+    n_val = int(0.15 * n)
+    n_test = n - n_train - n_val
+    train_ds, val_ds, test_ds = torch.utils.data.random_split(full_ds, [n_train, n_val, n_test])
 
     _pin = torch.cuda.is_available()
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,  num_workers=0, pin_memory=_pin)
-    val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin)
-    test_loader  = DataLoader(test_ds,  batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=_pin)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin)
 
     stats = {
-        "disp_scale":           float(np.median(_per_sim_disp_scales)),  # representative for logging
-        "per_sim_disp_scales":  _per_sim_disp_scales,
-        "per_sim_norm":         True,
-        "stress_scale":         stress_scale,
-        "scalar_scales":        scalar_scales,
-        "input_channels":       input_channels,
-        "num_nodes":            num_nodes,
-        "checkerboard_size":    checkerboard_size,
-        "has_mat_features":     mat_arr is not None,
-        "n_train":              n_train,
-        "n_val":                n_val,
-        "n_test":               n_test,
+        "disp_scale": float(np.median(_per_sim_disp_scales)),  # representative for logging
+        "per_sim_disp_scales": _per_sim_disp_scales,
+        "per_sim_norm": True,
+        "stress_scale": stress_scale,
+        "scalar_scales": scalar_scales,
+        "input_channels": input_channels,
+        "num_nodes": num_nodes,
+        "checkerboard_size": checkerboard_size,
+        "has_mat_features": mat_arr is not None,
+        "n_train": n_train,
+        "n_val": n_val,
+        "n_test": n_test,
     }
     return train_loader, val_loader, test_loader, stats
 
@@ -879,6 +906,7 @@ def train_model_multitask(
     train_losses, val_losses : lists of per-epoch total loss.
     """
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -896,8 +924,7 @@ def train_model_multitask(
     patience_ctr = 0
     train_losses, val_losses = [], []
 
-    best_path = (plot_save_path.replace(".png", "_best.pth")
-                 if plot_save_path else None)
+    best_path = plot_save_path.replace(".png", "_best.pth") if plot_save_path else None
 
     def _compute_loss(out, disp_t, stress_t, scalar_t, active_λ_s, active_λ_c):
         """Weighted multi-task loss with stress component masking."""
@@ -905,7 +932,7 @@ def train_model_multitask(
         stress_loss = 0.0
         if active_λ_s > 0 and "stresses" in out:
             s_pred = out["stresses"][..., :stress_components]
-            s_gt   = stress_t[..., :stress_components]
+            s_gt = stress_t[..., :stress_components]
             stress_loss = criterion(s_pred, s_gt)
         scalar_loss = 0.0
         if active_λ_c > 0 and "scalars" in out:
@@ -932,15 +959,15 @@ def train_model_multitask(
             else:
                 cb, disp_t, stress_t, scalar_t = batch
                 mat_f = None
-            cb       = cb.to(device)
-            disp_t   = disp_t.to(device)
+            cb = cb.to(device)
+            disp_t = disp_t.to(device)
             stress_t = stress_t.to(device)
             scalar_t = scalar_t.to(device)
 
             optimizer.zero_grad()
             if _use_amp:
                 with torch.amp.autocast("cuda"):
-                    out  = model(cb, mat_f)
+                    out = model(cb, mat_f)
                     loss = _compute_loss(out, disp_t, stress_t, scalar_t, active_λ_s, active_λ_c)
                 scaler.scale(loss).backward()
                 if max_grad_norm:
@@ -949,7 +976,7 @@ def train_model_multitask(
                 scaler.step(optimizer)
                 scaler.update()
             else:
-                out  = model(cb, mat_f)
+                out = model(cb, mat_f)
                 loss = _compute_loss(out, disp_t, stress_t, scalar_t, active_λ_s, active_λ_c)
                 loss.backward()
                 if max_grad_norm:
@@ -971,8 +998,8 @@ def train_model_multitask(
                 else:
                     cb, disp_t, stress_t, scalar_t = batch
                     mat_f = None
-                cb       = cb.to(device)
-                disp_t   = disp_t.to(device)
+                cb = cb.to(device)
+                disp_t = disp_t.to(device)
                 stress_t = stress_t.to(device)
                 scalar_t = scalar_t.to(device)
                 if _use_amp:
@@ -980,9 +1007,7 @@ def train_model_multitask(
                         out = model(cb, mat_f)
                 else:
                     out = model(cb, mat_f)
-                val_loss += _compute_loss(
-                    out, disp_t, stress_t, scalar_t, active_λ_s, active_λ_c
-                ).item()
+                val_loss += _compute_loss(out, disp_t, stress_t, scalar_t, active_λ_s, active_λ_c).item()
         val_loss /= max(len(val_loader), 1)
         val_losses.append(val_loss)
 
@@ -1010,9 +1035,11 @@ def train_model_multitask(
     if plot_save_path:
         fig, ax = plt.subplots()
         ax.plot(train_losses, label="Train")
-        ax.plot(val_losses,   label="Val")
-        ax.set_xlabel("Epoch"); ax.set_ylabel("Loss (weighted multi-task)")
-        ax.legend(); ax.set_title("MultiTaskPredictor Training")
+        ax.plot(val_losses, label="Val")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Loss (weighted multi-task)")
+        ax.legend()
+        ax.set_title("MultiTaskPredictor Training")
         os.makedirs(os.path.dirname(os.path.abspath(plot_save_path)), exist_ok=True)
         fig.savefig(plot_save_path, dpi=150, bbox_inches="tight")
         plt.close(fig)
@@ -1021,7 +1048,15 @@ def train_model_multitask(
 
 
 # 5. Data Loader Creation Function
-def create_data_loaders(base_folder, load_files=("checkerboard", "displacements"), skip_missing=True, batch_size=15, load_material_features=False, normalize_displacements=False, per_sim_normalize_displacements=False):
+def create_data_loaders(
+    base_folder,
+    load_files=("checkerboard", "displacements"),
+    skip_missing=True,
+    batch_size=15,
+    load_material_features=False,
+    normalize_displacements=False,
+    per_sim_normalize_displacements=False,
+):
     """
     Create PyTorch DataLoaders for training, validation, and testing.
 
@@ -1041,8 +1076,9 @@ def create_data_loaders(base_folder, load_files=("checkerboard", "displacements"
     Returns:
         tuple: DataLoaders for training, validation, and testing, and the loaded data dictionary.
     """
-    loaded_data = load_all_npy_files(base_folder, load_files, skip_missing,
-                                     load_material_features=load_material_features)
+    loaded_data = load_all_npy_files(
+        base_folder, load_files, skip_missing, load_material_features=load_material_features
+    )
     checkerboard = loaded_data["checkerboard"]
     displacements = loaded_data["displacements"]
     mat_features = loaded_data.get("material_features", None)
@@ -1060,14 +1096,11 @@ def create_data_loaders(base_folder, load_files=("checkerboard", "displacements"
     # amplitude range (fixes the 5000× dynamic range problem in 316L+ceramic, etc.).
     # normalize_displacements: legacy global-max scaling.
     if per_sim_normalize_displacements:
-        _per_sim_scales = np.array([
-            float(np.abs(displacements[i]).max()) or 1.0
-            for i in range(len(displacements))
-        ], dtype=np.float64)
+        _per_sim_scales = np.array(
+            [float(np.abs(displacements[i]).max()) or 1.0 for i in range(len(displacements))], dtype=np.float64
+        )
         # Normalize each sim in-place (displacements is already a numpy array)
-        displacements = (
-            displacements / _per_sim_scales[:, np.newaxis, np.newaxis]
-        ).astype(np.float32)
+        displacements = (displacements / _per_sim_scales[:, np.newaxis, np.newaxis]).astype(np.float32)
         loaded_data["per_sim_disp_scales"] = _per_sim_scales
         loaded_data["per_sim_norm"] = True
         loaded_data["disp_scale"] = float(np.median(_per_sim_scales))
@@ -1086,8 +1119,7 @@ def create_data_loaders(base_folder, load_files=("checkerboard", "displacements"
     np.random.seed(2024)
 
     # Create dataset — disp_scale=1.0 is a no-op when data is already normalized
-    full_dataset = CheckerboardDataset(checkerboard, displacements, mat_features,
-                                        disp_scale=_disp_scale)
+    full_dataset = CheckerboardDataset(checkerboard, displacements, mat_features, disp_scale=_disp_scale)
 
     # Split into train, validation, and test sets
     train_size = int(0.7 * len(full_dataset))
@@ -1097,17 +1129,18 @@ def create_data_loaders(base_folder, load_files=("checkerboard", "displacements"
 
     # Wrap subsets with normalization — all three splits use the same global bounds.
     train_dataset = NormalizedDataset(train_dataset, min_val=_cb_min, max_val=_cb_max)
-    val_dataset   = NormalizedDataset(val_dataset,   min_val=_cb_min, max_val=_cb_max)
-    test_dataset  = NormalizedDataset(test_dataset,  min_val=_cb_min, max_val=_cb_max)
+    val_dataset = NormalizedDataset(val_dataset, min_val=_cb_min, max_val=_cb_max)
+    test_dataset = NormalizedDataset(test_dataset, min_val=_cb_min, max_val=_cb_max)
 
     # pin_memory speeds up CPU->GPU transfers when a CUDA GPU is present.
     # num_workers=0 avoids Windows multiprocessing issues with CUDA.
     _pin = torch.cuda.is_available()
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,  num_workers=0, pin_memory=_pin)
-    val_loader   = DataLoader(val_dataset,   batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin)
-    test_loader  = DataLoader(test_dataset,  batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=_pin)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin)
 
     return train_loader, val_loader, test_loader, loaded_data
+
 
 # 6. Model Creation Function
 def create_model(input_channels, num_nodes, checkerboard_size=5):
@@ -1151,11 +1184,14 @@ def infer_dataset_shape(base_folder):
                              checkerboard_size=cb_size)
     """
     sim_folders = sorted(
-        [d for d in os.listdir(base_folder)
-         if os.path.isdir(os.path.join(base_folder, d))
-         and d.startswith("Simulation_")
-         and d[len("Simulation_"):].isdigit()],
-        key=lambda x: int(x.split("_")[1])
+        [
+            d
+            for d in os.listdir(base_folder)
+            if os.path.isdir(os.path.join(base_folder, d))
+            and d.startswith("Simulation_")
+            and d[len("Simulation_") :].isdigit()
+        ],
+        key=lambda x: int(x.split("_")[1]),
     )
 
     if not sim_folders:
@@ -1174,23 +1210,21 @@ def infer_dataset_shape(base_folder):
     for sim_name in sim_folders:
         sim_dir = os.path.join(base_folder, sim_name)
         disp_path = os.path.join(sim_dir, "displacements.npy")
-        cb_path   = os.path.join(sim_dir, "checkerboard.npy")
+        cb_path = os.path.join(sim_dir, "checkerboard.npy")
 
         if not os.path.exists(disp_path) or not os.path.exists(cb_path):
             continue  # try next folder
 
         disp = np.load(disp_path)
-        cb   = np.load(cb_path)
+        cb = np.load(cb_path)
 
         if disp.ndim != 2 or disp.shape[1] != 3:
             raise ValueError(
-                f"displacements.npy in {sim_name} has unexpected shape {disp.shape}. "
-                "Expected (N_nodes, 3)."
+                f"displacements.npy in {sim_name} has unexpected shape {disp.shape}. " "Expected (N_nodes, 3)."
             )
         if cb.ndim != 2:
             raise ValueError(
-                f"checkerboard.npy in {sim_name} has unexpected shape {cb.shape}. "
-                "Expected a 2-D array."
+                f"checkerboard.npy in {sim_name} has unexpected shape {cb.shape}. " "Expected a 2-D array."
             )
         if cb.shape[0] != cb.shape[1]:
             raise ValueError(
@@ -1198,11 +1232,13 @@ def infer_dataset_shape(base_folder):
                 "Only square G×G checkerboards are supported."
             )
 
-        num_nodes        = disp.shape[0]
+        num_nodes = disp.shape[0]
         checkerboard_size = cb.shape[0]
 
-        print(f"[infer_dataset_shape] Detected from {sim_name}: "
-              f"num_nodes={num_nodes}, checkerboard_size={checkerboard_size}x{checkerboard_size}")
+        print(
+            f"[infer_dataset_shape] Detected from {sim_name}: "
+            f"num_nodes={num_nodes}, checkerboard_size={checkerboard_size}x{checkerboard_size}"
+        )
         return num_nodes, checkerboard_size
 
     raise FileNotFoundError(
@@ -1210,8 +1246,24 @@ def infer_dataset_shape(base_folder):
         "but none contained both 'checkerboard.npy' and 'displacements.npy'."
     )
 
+
 # 7. Training Function
-def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, epochs=10, patience=5, device=None, plot_save_path=None, use_amp=False, accum_steps=1, use_material=False, max_grad_norm=None):
+def train_model(
+    model,
+    train_loader,
+    val_loader,
+    criterion,
+    optimizer,
+    scheduler,
+    epochs=10,
+    patience=5,
+    device=None,
+    plot_save_path=None,
+    use_amp=False,
+    accum_steps=1,
+    use_material=False,
+    max_grad_norm=None,
+):
     """
     Train the model with early stopping.
 
@@ -1237,21 +1289,21 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
     model = model.to(device)
 
     # AMP setup — only active on CUDA; gracefully degrades to float32 on CPU.
-    _use_amp = use_amp and device.type == 'cuda'
-    scaler = torch.amp.GradScaler('cuda') if _use_amp else None
+    _use_amp = use_amp and device.type == "cuda"
+    scaler = torch.amp.GradScaler("cuda") if _use_amp else None
 
-    best_val_loss = float('inf')
+    best_val_loss = float("inf")
     early_stop_counter = 0
 
     train_losses = []
     val_losses = []
 
     fig, ax = plt.subplots()
-    ax.set_xlabel('Epoch')
-    ax.set_ylabel('Loss')
-    ax.set_title('Training and Validation Loss')
-    line1, = ax.plot([], [], label='Training Loss', color='blue')
-    line2, = ax.plot([], [], label='Validation Loss', color='orange')
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss")
+    ax.set_title("Training and Validation Loss")
+    (line1,) = ax.plot([], [], label="Training Loss", color="blue")
+    (line2,) = ax.plot([], [], label="Validation Loss", color="orange")
     ax.legend()
 
     for epoch in range(epochs):
@@ -1271,7 +1323,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             displacement = displacement.to(device)
 
             if _use_amp:
-                with torch.amp.autocast('cuda'):
+                with torch.amp.autocast("cuda"):
                     predicted_displacements = model(checkerboard, mat_feat)
                     loss = criterion(predicted_displacements, displacement)
                 scaler.scale(loss / accum_steps).backward()
@@ -1338,9 +1390,10 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         print(f"Epoch {epoch+1}/{epochs}, Training Loss: {train_loss:.10f}, Validation Loss: {val_loss:.10f}")
 
     if plot_save_path:
-        plt.savefig(plot_save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(plot_save_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return train_losses, val_losses
+
 
 # 8. Evaluation Function
 def evaluate_model(model, test_loader, criterion, device=None, use_material=False):
@@ -1390,6 +1443,7 @@ def evaluate_model(model, test_loader, criterion, device=None, use_material=Fals
     print(f"Overall Mean Squared Error (MSE) on Test Set: {overall_mse:.10f}")
     return overall_mse
 
+
 # 9. Main Function
 def main():
     """
@@ -1405,12 +1459,10 @@ def main():
     ### Change the path to your local data directory
     data_path1 = r"C:\Users\Lenovo\Desktop\CSE 583 Software Development for Data Scientists\Project\Dataset1_Random_Board\Dataset1_Random_Board"
 
-
     # Create DataLoaders
     print("Loading data...")
     train_loader, val_loader, test_loader, _ = create_data_loaders(
-        base_folder=data_path1,
-        load_files=("checkerboard", "displacements")
+        base_folder=data_path1, load_files=("checkerboard", "displacements")
     )
 
     # Auto-detect GPU
@@ -1459,6 +1511,7 @@ def main():
     )
     print("Evaluation completed.")
 
+
 if __name__ == "__main__":
     main()
 
@@ -1506,8 +1559,7 @@ def train_save_gui(data_path):
     # Create DataLoaders
     print("Loading data...")
     train_loader, val_loader, _, loaded_data = create_data_loaders(
-        base_folder=data_path,
-        load_files=("checkerboard", "displacements")
+        base_folder=data_path, load_files=("checkerboard", "displacements")
     )
 
     # Create save directory before training so the loss curve can be written there
@@ -1515,10 +1567,13 @@ def train_save_gui(data_path):
     save_dir.mkdir(parents=True, exist_ok=True)
 
     # Save checkerboard normalization bounds so inference can reproduce the same scaling.
-    _norm = np.array([
-        loaded_data.get("checkerboard_norm_min", 0.0),
-        loaded_data.get("checkerboard_norm_max", 1.0),
-    ], dtype=np.float32)
+    _norm = np.array(
+        [
+            loaded_data.get("checkerboard_norm_min", 0.0),
+            loaded_data.get("checkerboard_norm_max", 1.0),
+        ],
+        dtype=np.float32,
+    )
     np.save(str(save_dir / "normalization_stats.npy"), _norm)
     print(f"Normalization stats saved: min={_norm[0]:.5f}  max={_norm[1]:.5f}")
 
@@ -1562,13 +1617,16 @@ def train_save_gui(data_path):
     # Save the reference mesh node coordinates so load_and_evaluate_model_gui
     # can spatially interpolate predictions onto evaluation meshes of different size.
     _ref_src = next(
-        (p / "node_coords.npy"
-         for p in sorted(Path(data_path).glob("Simulation_*"))
-         if (p / "node_coords.npy").exists()),
+        (
+            p / "node_coords.npy"
+            for p in sorted(Path(data_path).glob("Simulation_*"))
+            if (p / "node_coords.npy").exists()
+        ),
         None,
     )
     if _ref_src is not None:
         import shutil as _shutil
+
         _shutil.copy2(str(_ref_src), str(save_dir / "reference_node_coords.npy"))
         print("Reference node coordinates saved alongside model for mesh interpolation.")
 
@@ -1577,6 +1635,7 @@ def train_save_gui(data_path):
 # Convolutional Decoder Architecture
 # ============================================================
 
+
 class FieldDataset(Dataset):
     """Dataset that serves (checkerboard, [mat_features,] disp_field) tuples.
 
@@ -1584,6 +1643,7 @@ class FieldDataset(Dataset):
     regular H×W grid (X outer-loop, Y inner-loop).  This class reshapes them
     to (3, H, W) so a convolutional decoder can predict the full spatial field.
     """
+
     def __init__(self, checkerboards, displacements, grid_H, grid_W, mat_features=None):
         self.checkerboards = checkerboards
         self.displacements = displacements
@@ -1610,9 +1670,13 @@ class FieldDataset(Dataset):
 
 def infer_grid_shape(data_path):
     """Return (grid_H, grid_W) by counting unique X and Y values in node_coords.npy."""
-    for sim in sorted(os.listdir(data_path), key=lambda s: int(s.split('_')[1])
-                      if s.startswith('Simulation_') and s[len('Simulation_'):].isdigit() else 9999):
-        nc_path = os.path.join(data_path, sim, 'node_coords.npy')
+    for sim in sorted(
+        os.listdir(data_path),
+        key=lambda s: (
+            int(s.split("_")[1]) if s.startswith("Simulation_") and s[len("Simulation_") :].isdigit() else 9999
+        ),
+    ):
+        nc_path = os.path.join(data_path, sim, "node_coords.npy")
         if os.path.exists(nc_path):
             nc = np.load(nc_path)
             H = len(np.unique(np.round(nc[:, 0], 8)))
@@ -1637,12 +1701,13 @@ def create_field_data_loaders(data_path, batch_size=15, load_material_features=F
         disp_scale      : median per-sim scale (m) — representative for logging
         per_sim_scales  : (N,) float32 array of per-sim max abs displacement (m)
     """
-    loaded = load_all_npy_files(data_path, ('checkerboard', 'displacements'),
-                                load_material_features=load_material_features)
+    loaded = load_all_npy_files(
+        data_path, ("checkerboard", "displacements"), load_material_features=load_material_features
+    )
     grid_H, grid_W = infer_grid_shape(data_path)
-    mat_features = loaded.get('material_features', None)
+    mat_features = loaded.get("material_features", None)
 
-    disp_arr = loaded['displacements']  # (N, nodes, 3)
+    disp_arr = loaded["displacements"]  # (N, nodes, 3)
     per_sim_scales = np.array(
         [float(np.abs(disp_arr[i]).max()) or 1.0 for i in range(len(disp_arr))],
         dtype=np.float32,
@@ -1650,8 +1715,9 @@ def create_field_data_loaders(data_path, batch_size=15, load_material_features=F
     disp_arr = (disp_arr / per_sim_scales[:, np.newaxis, np.newaxis]).astype(np.float32)
     disp_scale = float(np.median(per_sim_scales))
 
-    torch.manual_seed(2024); np.random.seed(2024)
-    full_ds = FieldDataset(loaded['checkerboard'], disp_arr, grid_H, grid_W, mat_features)
+    torch.manual_seed(2024)
+    np.random.seed(2024)
+    full_ds = FieldDataset(loaded["checkerboard"], disp_arr, grid_H, grid_W, mat_features)
     n = len(full_ds)
     tr, va = int(0.7 * n), int(0.15 * n)
     te = n - tr - va
@@ -1659,10 +1725,13 @@ def create_field_data_loaders(data_path, batch_size=15, load_material_features=F
 
     _pin = torch.cuda.is_available()
     return (
-        DataLoader(train_ds, batch_size=batch_size, shuffle=True,  num_workers=0, pin_memory=_pin),
-        DataLoader(val_ds,   batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin),
-        DataLoader(test_ds,  batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin),
-        grid_H, grid_W, disp_scale, per_sim_scales,
+        DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=_pin),
+        DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin),
+        DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin),
+        grid_H,
+        grid_W,
+        disp_scale,
+        per_sim_scales,
     )
 
 
@@ -1679,6 +1748,7 @@ class ConvDecoderPredictor(nn.Module):
     input_channels : int
     out_H, out_W   : spatial size of the predicted displacement field
     """
+
     def __init__(self, input_channels=1, out_H=51, out_W=51, mat_dim=0):
         super().__init__()
         self.out_H = out_H
@@ -1687,17 +1757,23 @@ class ConvDecoderPredictor(nn.Module):
 
         # Encoder — identical to DisplacementPredictor (3 conv+attention blocks)
         # reflect padding respects free-surface symmetry at domain edges (HOLE 4 fix)
-        self.conv1 = nn.Sequential(nn.Conv2d(input_channels, 32, 3, padding=1, padding_mode='reflect'),
-                                   nn.BatchNorm2d(32), nn.ReLU())
-        self.ca1 = ChannelAttention(32);  self.sa1 = SpatialAttention()
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(input_channels, 32, 3, padding=1, padding_mode="reflect"), nn.BatchNorm2d(32), nn.ReLU()
+        )
+        self.ca1 = ChannelAttention(32)
+        self.sa1 = SpatialAttention()
 
-        self.conv2 = nn.Sequential(nn.Conv2d(32, 64, 3, padding=1, padding_mode='reflect'),
-                                   nn.BatchNorm2d(64), nn.ReLU())
-        self.ca2 = ChannelAttention(64);  self.sa2 = SpatialAttention()
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(32, 64, 3, padding=1, padding_mode="reflect"), nn.BatchNorm2d(64), nn.ReLU()
+        )
+        self.ca2 = ChannelAttention(64)
+        self.sa2 = SpatialAttention()
 
-        self.conv3 = nn.Sequential(nn.Conv2d(64, 128, 3, padding=1, padding_mode='reflect'),
-                                   nn.BatchNorm2d(128), nn.ReLU())
-        self.ca3 = ChannelAttention(128); self.sa3 = SpatialAttention()
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(64, 128, 3, padding=1, padding_mode="reflect"), nn.BatchNorm2d(128), nn.ReLU()
+        )
+        self.ca3 = ChannelAttention(128)
+        self.sa3 = SpatialAttention()
 
         # Material projection: project mat_dim → 128 and add as spatial bias to encoder output
         self.mat_proj = nn.Linear(mat_dim, 128) if mat_dim > 0 else None
@@ -1705,8 +1781,8 @@ class ConvDecoderPredictor(nn.Module):
         # Decoder: upsample to training grid resolution, then refine with convolutions
         # reflect padding in decoder enforces zero-flux boundary (free-surface BC)
         self.decoder = nn.Sequential(
-            nn.Upsample(size=(out_H, out_W), mode='bilinear', align_corners=False),
-            nn.Conv2d(128, 64, 3, padding=1, padding_mode='reflect'),
+            nn.Upsample(size=(out_H, out_W), mode="bilinear", align_corners=False),
+            nn.Conv2d(128, 64, 3, padding=1, padding_mode="reflect"),
             nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.Conv2d(64, 3, 1),  # 3 channels = ux, uy, uz; kernel=1, no padding needed
@@ -1745,6 +1821,7 @@ def sample_field_at_coords(field, node_xy):
     (B, N, 3) tensor of sampled displacements.
     """
     import torch.nn.functional as F
+
     B, _, H, W = field.shape
     N = node_xy.shape[0]
 
@@ -1762,8 +1839,7 @@ def sample_field_at_coords(field, node_xy):
     gy = (2.0 * x_01 - 1.0).view(1, N, 1, 1).expand(B, N, 1, 1)
     grid = torch.cat([gx, gy], dim=-1)  # (B, N, 1, 2)
 
-    sampled = F.grid_sample(field, grid, mode='bilinear',
-                            align_corners=False, padding_mode='border')
+    sampled = F.grid_sample(field, grid, mode="bilinear", align_corners=False, padding_mode="border")
     # sampled: (B, 3, N, 1) → (B, N, 3)
     return sampled.squeeze(-1).permute(0, 2, 1)
 
@@ -1779,7 +1855,7 @@ def train_save_conv_gui(data_path, epochs=20, use_amp=None, accum_steps=None, us
         accum_steps (int|None):  Gradient accumulation steps. None = auto (4 for large
                                  grids, 1 otherwise).
     """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
         print(f"GPU detected: {torch.cuda.get_device_name(0)} — training on CUDA.")
     else:
@@ -1787,7 +1863,8 @@ def train_save_conv_gui(data_path, epochs=20, use_amp=None, accum_steps=None, us
 
     print("Loading data...")
     train_loader, val_loader, _, grid_H, grid_W = create_field_data_loaders(
-        data_path, load_material_features=use_material)
+        data_path, load_material_features=use_material
+    )
     _, G = infer_dataset_shape(data_path)  # checkerboard size
     _mat_dim = MAT_DIM if use_material else 0
 
@@ -1801,8 +1878,7 @@ def train_save_conv_gui(data_path, epochs=20, use_amp=None, accum_steps=None, us
 
     model = ConvDecoderPredictor(input_channels=1, out_H=grid_H, out_W=grid_W, mat_dim=_mat_dim).to(device)
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"ConvDecoder: grid={grid_H}×{grid_W}  params={n_params:,}  "
-          f"({n_params*4/1e6:.2f} MB weights)")
+    print(f"ConvDecoder: grid={grid_H}×{grid_W}  params={n_params:,}  " f"({n_params*4/1e6:.2f} MB weights)")
 
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
@@ -1814,10 +1890,19 @@ def train_save_conv_gui(data_path, epochs=20, use_amp=None, accum_steps=None, us
 
     print("Starting training...")
     train_losses, val_losses = train_model(
-        model=model, train_loader=train_loader, val_loader=val_loader,
-        criterion=criterion, optimizer=optimizer, scheduler=scheduler,
-        epochs=epochs, patience=7, device=device, plot_save_path=plot_path,
-        use_amp=use_amp, accum_steps=accum_steps, use_material=use_material,
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        criterion=criterion,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        epochs=epochs,
+        patience=7,
+        device=device,
+        plot_save_path=plot_path,
+        use_amp=use_amp,
+        accum_steps=accum_steps,
+        use_material=use_material,
     )
     print(f"Training done. train={train_losses[-1]:.4e}  val={val_losses[-1]:.4e}")
 
@@ -1827,11 +1912,16 @@ def train_save_conv_gui(data_path, epochs=20, use_amp=None, accum_steps=None, us
 
     # Save reference node coords (same as train_save_gui) for any post-processing that needs them
     _ref_src = next(
-        (p / "node_coords.npy"
-         for p in sorted(Path(data_path).glob("Simulation_*"))
-         if (p / "node_coords.npy").exists()), None)
+        (
+            p / "node_coords.npy"
+            for p in sorted(Path(data_path).glob("Simulation_*"))
+            if (p / "node_coords.npy").exists()
+        ),
+        None,
+    )
     if _ref_src:
         import shutil as _sh
+
         _sh.copy2(str(_ref_src), str(save_dir / "reference_node_coords.npy"))
         print("Reference node coords saved.")
 
@@ -1855,33 +1945,34 @@ def load_and_evaluate_conv_gui(model_path, test_data_path, pred_save_dir, mat_fe
         <pred_save_dir>/Simulation_<idx>/pred_displacements.npy  (N, 3)
         <pred_save_dir>/Simulation_<idx>/pred_displacements.csv
     """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = torch.load(model_path, map_location=device, weights_only=False)
     model.eval()
 
     # Build material feature tensor once for all samples
     mat_t = None
-    _mat_dim = getattr(model, 'mat_dim', 0)
+    _mat_dim = getattr(model, "mat_dim", 0)
     if mat_features is not None and _mat_dim > 0:
-        mat_t = torch.tensor(np.asarray(mat_features, dtype=np.float32),
-                             dtype=torch.float32).unsqueeze(0).to(device)  # (1, mat_dim)
+        mat_t = (
+            torch.tensor(np.asarray(mat_features, dtype=np.float32), dtype=torch.float32).unsqueeze(0).to(device)
+        )  # (1, mat_dim)
         print(f"[ConvDecoder] Material conditioning enabled (mat_dim={_mat_dim}).")
     elif mat_features is not None and _mat_dim == 0:
         print("[ConvDecoder] Model has mat_dim=0 — material features ignored.")
 
     # Load checkerboard(s) from test folder
-    if os.path.exists(os.path.join(test_data_path, 'checkerboard.npy')):
-        cbs = np.stack([np.load(os.path.join(test_data_path, 'checkerboard.npy'))])
+    if os.path.exists(os.path.join(test_data_path, "checkerboard.npy")):
+        cbs = np.stack([np.load(os.path.join(test_data_path, "checkerboard.npy"))])
     else:
-        loaded = load_all_npy_files(test_data_path, ('checkerboard',), skip_missing=True)
-        cbs = loaded['checkerboard']
+        loaded = load_all_npy_files(test_data_path, ("checkerboard",), skip_missing=True)
+        cbs = loaded["checkerboard"]
 
     # Load node coordinates for sampling
-    nc_path = os.path.join(test_data_path, 'node_coords.npy')
-    if not os.path.exists(nc_path) and not os.path.exists(os.path.join(test_data_path, 'checkerboard.npy')):
+    nc_path = os.path.join(test_data_path, "node_coords.npy")
+    if not os.path.exists(nc_path) and not os.path.exists(os.path.join(test_data_path, "checkerboard.npy")):
         # Try first simulation sub-folder
         for d in sorted(os.listdir(test_data_path)):
-            candidate = os.path.join(test_data_path, d, 'node_coords.npy')
+            candidate = os.path.join(test_data_path, d, "node_coords.npy")
             if os.path.exists(candidate):
                 nc_path = candidate
                 break
@@ -1896,7 +1987,7 @@ def load_and_evaluate_conv_gui(model_path, test_data_path, pred_save_dir, mat_fe
             if mat_t is not None:
                 field = model(cb_t, mat_t)  # (1, 3, H, W)
             else:
-                field = model(cb_t)         # (1, 3, H, W)
+                field = model(cb_t)  # (1, 3, H, W)
 
         if node_coords is not None:
             nc_t = torch.tensor(node_coords[:, :2], dtype=torch.float32).to(device)
@@ -1916,6 +2007,7 @@ def load_and_evaluate_conv_gui(model_path, test_data_path, pred_save_dir, mat_fe
 # ============================================================
 # Ground-truth comparison — works for any saved model
 # ============================================================
+
 
 def evaluate_on_dataset(
     model_path: str,
@@ -1954,6 +2046,7 @@ def evaluate_on_dataset(
     """
     from scipy.stats import pearsonr
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -1971,8 +2064,9 @@ def evaluate_on_dataset(
         cb_min, cb_max = float(_ns[0]), float(_ns[1])
         # 3rd element is displacement scale (present when normalize_displacements=True)
         disp_scale = float(_ns[2]) if len(_ns) >= 3 else 1.0
-        print(f"[evaluate_on_dataset] Normalization: min={cb_min:.5f}  max={cb_max:.5f}  "
-              f"disp_scale={disp_scale:.4e}")
+        print(
+            f"[evaluate_on_dataset] Normalization: min={cb_min:.5f}  max={cb_max:.5f}  " f"disp_scale={disp_scale:.4e}"
+        )
     else:
         cb_min, cb_max = None, None
         disp_scale = 1.0
@@ -1993,25 +2087,25 @@ def evaluate_on_dataset(
     # at inference time so each sim's prediction is correctly denormalized.
     _per_sim_norm = os.path.exists(os.path.join(model_dir, "per_sim_norm.npy"))
 
-    _mat_dim = getattr(model, 'mat_dim', 0)
+    _mat_dim = getattr(model, "mat_dim", 0)
     # mat_features arg is kept for backward-compatibility (single override for all sims).
     # When _mat_dim > 0 and no override is supplied, we load per-sim features from disk.
     _mat_override = None
     if mat_features is not None and _mat_dim > 0:
-        _mat_override = torch.tensor(np.asarray(mat_features, dtype=np.float32),
-                                     dtype=torch.float32).unsqueeze(0).to(device)
+        _mat_override = (
+            torch.tensor(np.asarray(mat_features, dtype=np.float32), dtype=torch.float32).unsqueeze(0).to(device)
+        )
 
-    is_conv      = isinstance(model, ConvDecoderPredictor)
-    is_siren     = isinstance(model, SIRENPredictor)
+    is_conv = isinstance(model, ConvDecoderPredictor)
+    is_siren = isinstance(model, SIRENPredictor)
     is_multitask = isinstance(model, MultiTaskPredictor)
     # Detect influence-field ConvDecoder (input_channels=4 → needs influence_fields.npy)
     is_influence = is_conv and getattr(model.conv1[0], "in_channels", 1) == 4
     # Whether the model was trained with shot-process conditioning (mat_dim == 10)
-    _uses_shot_cond = (_mat_dim == FULL_COND_DIM)
+    _uses_shot_cond = _mat_dim == FULL_COND_DIM
 
     sims = sorted(
-        [d for d in os.listdir(data_path) if d.startswith("Simulation_")
-         and d[len("Simulation_"):].isdigit()],
+        [d for d in os.listdir(data_path) if d.startswith("Simulation_") and d[len("Simulation_") :].isdigit()],
         key=lambda x: int(x.split("_")[1]),
     )
 
@@ -2019,21 +2113,21 @@ def evaluate_on_dataset(
     fig_data = None  # store one example for the plot
 
     for sim_name in sims:
-        sim_dir   = os.path.join(data_path, sim_name)
+        sim_dir = os.path.join(data_path, sim_name)
         phys_path = os.path.join(sim_dir, "checkerboard_physics.npy")
-        inf_path  = os.path.join(sim_dir, "influence_fields.npy")
-        cb_path   = os.path.join(sim_dir, "checkerboard.npy")
-        gt_path   = os.path.join(sim_dir, "displacements.npy")
-        nc_path   = os.path.join(sim_dir, "node_coords.npy")
+        inf_path = os.path.join(sim_dir, "influence_fields.npy")
+        cb_path = os.path.join(sim_dir, "checkerboard.npy")
+        gt_path = os.path.join(sim_dir, "displacements.npy")
+        nc_path = os.path.join(sim_dir, "node_coords.npy")
 
         if not os.path.exists(gt_path):
             continue
 
         # Select the right input depending on model type
         if is_influence and os.path.exists(inf_path):
-            cb = np.load(inf_path).astype(np.float32)    # (4, H, W) — already in [0,1]
+            cb = np.load(inf_path).astype(np.float32)  # (4, H, W) — already in [0,1]
         elif is_multitask and os.path.exists(phys_path):
-            cb = np.load(phys_path).astype(np.float32)   # (6, G, G) — already in [0,1]
+            cb = np.load(phys_path).astype(np.float32)  # (6, G, G) — already in [0,1]
         elif os.path.exists(cb_path):
             cb = np.load(cb_path)
         else:
@@ -2108,7 +2202,7 @@ def evaluate_on_dataset(
         pred_comp = pred[:, comp_idx] * _sim_scale * 1e6
 
         thresh = max(float(np.abs(gt_comp).max()) * threshold_frac, 0.5)
-        mask   = np.abs(gt_comp) > thresh
+        mask = np.abs(gt_comp) > thresh
         if mask.sum() < 5:
             continue
 
@@ -2117,12 +2211,12 @@ def evaluate_on_dataset(
         peak = float(np.abs(gt_comp).max()) or 1.0
         rel_rmse_pct = rmse / peak * 100.0
 
-        per_sim.append({"sim": sim_name, "rmse_um": rmse, "pearson_r": r,
-                        "rel_rmse_pct": rel_rmse_pct})
+        per_sim.append({"sim": sim_name, "rmse_um": rmse, "pearson_r": r, "rel_rmse_pct": rel_rmse_pct})
 
         # Store median-quality example for the figure
-        if fig_data is None or abs(r - float(np.median([s["pearson_r"] for s in per_sim]))) < \
-                abs(fig_data["r"] - float(np.median([s["pearson_r"] for s in per_sim]))):
+        if fig_data is None or abs(r - float(np.median([s["pearson_r"] for s in per_sim]))) < abs(
+            fig_data["r"] - float(np.median([s["pearson_r"] for s in per_sim]))
+        ):
             if os.path.exists(nc_path):
                 nc = np.load(nc_path).astype(np.float32)
                 xs = np.unique(np.round(nc[:, 0], 8))
@@ -2130,20 +2224,27 @@ def evaluate_on_dataset(
                 H, W = len(xs), len(ys)
                 if H * W == len(nc):
                     fig_data = {
-                        "sim": sim_name, "cb": cb,
+                        "sim": sim_name,
+                        "cb": cb,
                         "gt_2d": gt_comp.reshape(H, W),
                         "pr_2d": pred_comp.reshape(H, W),
-                        "rmse": rmse, "r": r,
+                        "rmse": rmse,
+                        "r": r,
                     }
 
     if not per_sim:
         print("[evaluate_on_dataset] No simulations could be evaluated.")
-        return {"per_sim": [], "mean_rmse_um": float("nan"), "mean_r": float("nan"),
-                "mean_rel_rmse_pct": float("nan"), "n_ok": 0}
+        return {
+            "per_sim": [],
+            "mean_rmse_um": float("nan"),
+            "mean_r": float("nan"),
+            "mean_rel_rmse_pct": float("nan"),
+            "n_ok": 0,
+        }
 
-    mean_rmse         = float(np.mean([s["rmse_um"]       for s in per_sim]))
-    mean_r            = float(np.mean([s["pearson_r"]      for s in per_sim]))
-    mean_rel_rmse_pct = float(np.mean([s["rel_rmse_pct"]   for s in per_sim]))
+    mean_rmse = float(np.mean([s["rmse_um"] for s in per_sim]))
+    mean_r = float(np.mean([s["pearson_r"] for s in per_sim]))
+    mean_rel_rmse_pct = float(np.mean([s["rel_rmse_pct"] for s in per_sim]))
 
     print(f"\n[Ground-truth check]  {len(per_sim)} simulations")
     print(f"  Component    : {component}")
@@ -2157,24 +2258,25 @@ def evaluate_on_dataset(
         gt_2d = fig_data["gt_2d"]
         pr_2d = fig_data["pr_2d"]
         er_2d = pr_2d - gt_2d
-        vmin  = min(gt_2d.min(), pr_2d.min())
-        vmax  = max(gt_2d.max(), pr_2d.max())
-        elim  = max(float(np.abs(er_2d).max()), 0.01)
+        vmin = min(gt_2d.min(), pr_2d.min())
+        vmax = max(gt_2d.max(), pr_2d.max())
+        elim = max(float(np.abs(er_2d).max()), 0.01)
 
         fig = plt.figure(figsize=(14, 3.8))
-        gs  = gridspec.GridSpec(1, 5, width_ratios=[0.7, 1, 1, 1, 0.06],
-                                wspace=0.10, left=0.03, right=0.95, top=0.88, bottom=0.12)
+        gs = gridspec.GridSpec(
+            1, 5, width_ratios=[0.7, 1, 1, 1, 0.06], wspace=0.10, left=0.03, right=0.95, top=0.88, bottom=0.12
+        )
         ax_cb = fig.add_subplot(gs[0])
         ax_gt = fig.add_subplot(gs[1])
         ax_pr = fig.add_subplot(gs[2])
         ax_er = fig.add_subplot(gs[3])
-        cax   = fig.add_subplot(gs[4])
+        cax = fig.add_subplot(gs[4])
 
         kw = dict(origin="lower", aspect="equal")
         _cb_show = fig_data["cb"]
         if _cb_show.ndim == 3:
-            _cb_show = _cb_show[0]   # show shot-density channel of physics CB
-        ax_cb.imshow(_cb_show, cmap="Blues",   **kw)
+            _cb_show = _cb_show[0]  # show shot-density channel of physics CB
+        ax_cb.imshow(_cb_show, cmap="Blues", **kw)
         ax_cb.set_title("Input\nCheckerboard", fontsize=9)
         ax_gt.imshow(gt_2d, cmap="viridis", vmin=vmin, vmax=vmax, **kw)
         ax_gt.set_title(f"Ground Truth ${component}$ (µm)", fontsize=9)
@@ -2183,13 +2285,15 @@ def evaluate_on_dataset(
         ax_er.imshow(er_2d, cmap="RdBu_r", vmin=-elim, vmax=elim, **kw)
         ax_er.set_title("Residual (µm)", fontsize=9)
         for ax in (ax_cb, ax_gt, ax_pr, ax_er):
-            ax.set_xticks([]); ax.set_yticks([])
+            ax.set_xticks([])
+            ax.set_yticks([])
         plt.colorbar(im, cax=cax).set_label(f"${component}$ (µm)", fontsize=8)
         fig.suptitle(
             f"{fig_data['sim']}  |  RMSE={fig_data['rmse']:.3f} µm  "
             f"|  Pearson r={fig_data['r']:.4f}  "
             f"|  dataset mean RMSE={mean_rmse:.3f} µm  r={mean_r:.4f}",
-            fontsize=8, y=0.98,
+            fontsize=8,
+            y=0.98,
         )
         os.makedirs(os.path.dirname(os.path.abspath(plot_save_path)), exist_ok=True)
         fig.savefig(plot_save_path, dpi=200, bbox_inches="tight", facecolor="white")
@@ -2197,11 +2301,11 @@ def evaluate_on_dataset(
         print(f"  Figure saved: {plot_save_path}")
 
     return {
-        "per_sim":           per_sim,
-        "mean_rmse_um":      mean_rmse,
+        "per_sim": per_sim,
+        "mean_rmse_um": mean_rmse,
         "mean_rel_rmse_pct": mean_rel_rmse_pct,
-        "mean_r":            mean_r,
-        "n_ok":              len(per_sim),
+        "mean_r": mean_r,
+        "n_ok": len(per_sim),
     }
 
 
@@ -2231,6 +2335,7 @@ def evaluate_cupping_on_dataset(
     """
     from scipy.stats import pearsonr
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -2244,7 +2349,7 @@ def evaluate_cupping_on_dataset(
     # Load scalar_scales to denormalize cupping
     model_dir = os.path.dirname(os.path.abspath(model_path))
     scalar_scale_path = os.path.join(model_dir, "scalar_scales.npy")
-    mt_stats_path     = os.path.join(model_dir, "multitask_stats.npy")
+    mt_stats_path = os.path.join(model_dir, "multitask_stats.npy")
     cupping_scale = 1.0
     if os.path.exists(scalar_scale_path):
         cupping_scale = float(np.load(scalar_scale_path)[0])
@@ -2259,25 +2364,24 @@ def evaluate_cupping_on_dataset(
         cb_min, cb_max = float(_ns[0]), float(_ns[1])
 
     sims = sorted(
-        [d for d in os.listdir(dataset_dir) if d.startswith("Simulation_")
-         and d[len("Simulation_"):].isdigit()],
+        [d for d in os.listdir(dataset_dir) if d.startswith("Simulation_") and d[len("Simulation_") :].isdigit()],
         key=lambda x: int(x.split("_")[1]),
     )
 
     pred_list, true_list = [], []
 
     for sim_name in sims:
-        sim_dir   = os.path.join(dataset_dir, sim_name)
+        sim_dir = os.path.join(dataset_dir, sim_name)
         phys_path = os.path.join(sim_dir, "checkerboard_physics.npy")
         dens_path = os.path.join(sim_dir, "checkerboard.npy")
-        cup_path  = os.path.join(sim_dir, "cupping.npy")
+        cup_path = os.path.join(sim_dir, "cupping.npy")
 
         if not os.path.exists(cup_path):
             continue
 
         # Prefer physics checkerboard; fall back to density-only
         if os.path.exists(phys_path):
-            cb = np.load(phys_path).astype(np.float32)   # (C, G, G)
+            cb = np.load(phys_path).astype(np.float32)  # (C, G, G)
             cb_t = torch.tensor(cb, dtype=torch.float32).unsqueeze(0).to(device)
         elif os.path.exists(dens_path):
             cb_2d = np.load(dens_path).astype(np.float32)
@@ -2328,17 +2432,18 @@ def evaluate_cupping_on_dataset(
         print(f"  Cupping scatter saved: {save_path}")
 
     return {
-        "pred_um":   pred_arr,
-        "true_um":   true_arr,
+        "pred_um": pred_arr,
+        "true_um": true_arr,
         "pearson_r": r,
-        "rmse_um":   rmse,
-        "n_ok":      len(pred_list),
+        "rmse_um": rmse,
+        "n_ok": len(pred_list),
     }
 
 
 # ============================================================
 # SIREN / Implicit Neural Representation (INR)
 # ============================================================
+
 
 class SIRENLayer(nn.Module):
     """One layer of a Sinusoidal Representation Network (SIREN).
@@ -2354,11 +2459,11 @@ class SIRENLayer(nn.Module):
     omega_0      : float — 30.0 for the first layer, 1.0 for subsequent.
     is_first     : bool  — controls weight init scale.
     """
-    def __init__(self, in_features: int, out_features: int,
-                 omega_0: float = 1.0, is_first: bool = False):
+
+    def __init__(self, in_features: int, out_features: int, omega_0: float = 1.0, is_first: bool = False):
         super().__init__()
         self.omega_0 = omega_0
-        self.linear  = nn.Linear(in_features, out_features)
+        self.linear = nn.Linear(in_features, out_features)
         fan_in = in_features
         with torch.no_grad():
             if is_first:
@@ -2381,10 +2486,11 @@ class INRDecoder(nn.Module):
     hidden     : int — hidden width for all SIREN layers (default 256)
     n_layers   : int — number of hidden SIREN layers (default 4)
     """
+
     def __init__(self, latent_dim: int = 256, hidden: int = 256, n_layers: int = 4):
         super().__init__()
-        in_dim  = 2 + latent_dim
-        layers  = [SIRENLayer(in_dim, hidden, omega_0=30.0, is_first=True)]
+        in_dim = 2 + latent_dim
+        layers = [SIRENLayer(in_dim, hidden, omega_0=30.0, is_first=True)]
         for _ in range(n_layers - 1):
             layers.append(SIRENLayer(hidden, hidden, omega_0=1.0, is_first=False))
         self.net = nn.Sequential(*layers)
@@ -2404,9 +2510,9 @@ class INRDecoder(nn.Module):
         (B, K, 3) — displacement predictions at each coord for each sample
         """
         B, K = z.shape[0], coords.shape[0]
-        z_exp = z.unsqueeze(1).expand(B, K, -1)         # (B, K, latent_dim)
-        c_exp = coords.unsqueeze(0).expand(B, K, -1)    # (B, K, 2)
-        inp   = torch.cat([c_exp, z_exp], dim=-1)        # (B, K, 2+latent_dim)
+        z_exp = z.unsqueeze(1).expand(B, K, -1)  # (B, K, latent_dim)
+        c_exp = coords.unsqueeze(0).expand(B, K, -1)  # (B, K, 2)
+        inp = torch.cat([c_exp, z_exp], dim=-1)  # (B, K, 2+latent_dim)
         return self.out(self.net(inp.view(B * K, -1))).view(B, K, 3)
 
 
@@ -2425,24 +2531,26 @@ class SIRENPredictor(nn.Module):
     hidden         : int — SIREN hidden width (default 256)
     n_layers       : int — SIREN depth (default 4)
     """
-    def __init__(self, input_channels: int = 1, latent_dim: int = 256,
-                 hidden: int = 256, n_layers: int = 4, mat_dim: int = 0):
+
+    def __init__(
+        self, input_channels: int = 1, latent_dim: int = 256, hidden: int = 256, n_layers: int = 4, mat_dim: int = 0
+    ):
         super().__init__()
         self.latent_dim = latent_dim
-        self.mat_dim    = mat_dim
+        self.mat_dim = mat_dim
 
         # Encoder — identical 3-block structure to ConvDecoderPredictor
-        self.conv1 = nn.Sequential(nn.Conv2d(input_channels, 32, 3, padding=1),
-                                   nn.BatchNorm2d(32), nn.ReLU())
-        self.ca1 = ChannelAttention(32);  self.sa1 = SpatialAttention()
+        self.conv1 = nn.Sequential(nn.Conv2d(input_channels, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU())
+        self.ca1 = ChannelAttention(32)
+        self.sa1 = SpatialAttention()
 
-        self.conv2 = nn.Sequential(nn.Conv2d(32, 64, 3, padding=1),
-                                   nn.BatchNorm2d(64), nn.ReLU())
-        self.ca2 = ChannelAttention(64);  self.sa2 = SpatialAttention()
+        self.conv2 = nn.Sequential(nn.Conv2d(32, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU())
+        self.ca2 = ChannelAttention(64)
+        self.sa2 = SpatialAttention()
 
-        self.conv3 = nn.Sequential(nn.Conv2d(64, 128, 3, padding=1),
-                                   nn.BatchNorm2d(128), nn.ReLU())
-        self.ca3 = ChannelAttention(128); self.sa3 = SpatialAttention()
+        self.conv3 = nn.Sequential(nn.Conv2d(64, 128, 3, padding=1), nn.BatchNorm2d(128), nn.ReLU())
+        self.ca3 = ChannelAttention(128)
+        self.sa3 = SpatialAttention()
 
         # Global average pool → latent projection
         self.latent_proj = nn.Linear(128, latent_dim)
@@ -2455,14 +2563,14 @@ class SIRENPredictor(nn.Module):
         x = self.sa1(self.ca1(self.conv1(checkerboard)))
         x = self.sa2(self.ca2(self.conv2(x)))
         x = self.sa3(self.ca3(self.conv3(x)))
-        z = self.latent_proj(x.mean(dim=[2, 3]))   # (B, latent_dim)
+        z = self.latent_proj(x.mean(dim=[2, 3]))  # (B, latent_dim)
         if mat is not None and self.mat_dim > 0:
-            z = torch.cat([z, mat], dim=1)          # (B, latent_dim + mat_dim)
+            z = torch.cat([z, mat], dim=1)  # (B, latent_dim + mat_dim)
         return z
 
-    def forward(self, checkerboard: torch.Tensor,
-                coords: torch.Tensor,
-                mat: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self, checkerboard: torch.Tensor, coords: torch.Tensor, mat: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         """
         Parameters
         ----------
@@ -2479,6 +2587,7 @@ class SIRENPredictor(nn.Module):
 
 # ---- SIREN data loading ----
 
+
 class SIRENDataset(Dataset):
     """Dataset serving (checkerboard, node_xy, displacements) triples.
 
@@ -2492,12 +2601,13 @@ class SIRENDataset(Dataset):
     displacements : np.ndarray (S, N, 3)
     disp_scale    : float | None — divide displacements by this scale (saves as 1.0 if None)
     """
+
     def __init__(self, checkerboards, node_xy, displacements, mat_features=None, disp_scale=None):
         self.checkerboards = checkerboards
-        self.node_xy       = self._normalise_coords(np.asarray(node_xy, dtype=np.float32))
-        self.disp_scale    = float(disp_scale) if disp_scale is not None else 1.0
+        self.node_xy = self._normalise_coords(np.asarray(node_xy, dtype=np.float32))
+        self.disp_scale = float(disp_scale) if disp_scale is not None else 1.0
         self.displacements = displacements / self.disp_scale
-        self.mat_features  = mat_features  # (S, 7) or None
+        self.mat_features = mat_features  # (S, 7) or None
 
     @staticmethod
     def _normalise_coords(xy: np.ndarray) -> np.ndarray:
@@ -2512,9 +2622,9 @@ class SIRENDataset(Dataset):
         return len(self.checkerboards)
 
     def __getitem__(self, idx):
-        cb  = torch.tensor(self.checkerboards[idx], dtype=torch.float32).unsqueeze(0)
-        xy  = torch.tensor(self.node_xy,            dtype=torch.float32)
-        d   = torch.tensor(self.displacements[idx], dtype=torch.float32)
+        cb = torch.tensor(self.checkerboards[idx], dtype=torch.float32).unsqueeze(0)
+        xy = torch.tensor(self.node_xy, dtype=torch.float32)
+        d = torch.tensor(self.displacements[idx], dtype=torch.float32)
         if self.mat_features is not None:
             mat = torch.tensor(self.mat_features[idx], dtype=torch.float32)
             return cb, mat, xy, d
@@ -2526,27 +2636,33 @@ def siren_collate_fn(k_nodes: int):
 
     Handles both 3-tuple (cb, xy, d) and 4-tuple (cb, mat, xy, d) items.
     """
+
     def collate(batch):
         if len(batch[0]) == 4:
             cbs, mats, xys, disps = zip(*batch)
-            mats = torch.stack(mats)    # (B, mat_dim)
+            mats = torch.stack(mats)  # (B, mat_dim)
         else:
             cbs, xys, disps = zip(*batch)
             mats = None
-        cbs   = torch.stack(cbs)    # (B, 1, G, G)
-        xys   = torch.stack(xys)    # (B, N, 2)
+        cbs = torch.stack(cbs)  # (B, 1, G, G)
+        xys = torch.stack(xys)  # (B, N, 2)
         disps = torch.stack(disps)  # (B, N, 3)
-        N   = xys.shape[1]
+        N = xys.shape[1]
         idx = torch.randperm(N)[:k_nodes]
         if mats is not None:
             return cbs, mats, xys[0, idx], disps[:, idx, :]
         return cbs, xys[0, idx], disps[:, idx, :]
+
     return collate
 
 
-def create_siren_loaders(data_path: str, k_nodes: int = 512, batch_size: int = 8,
-                          load_material_features: bool = False,
-                          normalize_displacements: bool = False):
+def create_siren_loaders(
+    data_path: str,
+    k_nodes: int = 512,
+    batch_size: int = 8,
+    load_material_features: bool = False,
+    normalize_displacements: bool = False,
+):
     """Build train/val/test DataLoaders for SIRENPredictor training.
 
     Requires node_coords.npy in at least one Simulation_* subfolder.
@@ -2564,51 +2680,56 @@ def create_siren_loaders(data_path: str, k_nodes: int = 512, batch_size: int = 8
     -------
     train_loader, val_loader, test_loader, N_total, disp_scale
     """
-    loaded = load_all_npy_files(data_path, ('checkerboard', 'displacements'),
-                                load_material_features=load_material_features)
-    cbs   = loaded['checkerboard']   # (S, G, G)
-    disps = loaded['displacements']  # (S, N, 3)
-    mat_features = loaded.get('material_features', None)
+    loaded = load_all_npy_files(
+        data_path, ("checkerboard", "displacements"), load_material_features=load_material_features
+    )
+    cbs = loaded["checkerboard"]  # (S, G, G)
+    disps = loaded["displacements"]  # (S, N, 3)
+    mat_features = loaded.get("material_features", None)
 
     nc_path = next(
-        (str(p / 'node_coords.npy')
-         for p in sorted(Path(data_path).glob('Simulation_*'))
-         if (p / 'node_coords.npy').exists()),
+        (
+            str(p / "node_coords.npy")
+            for p in sorted(Path(data_path).glob("Simulation_*"))
+            if (p / "node_coords.npy").exists()
+        ),
         None,
     )
     if nc_path is None:
         raise FileNotFoundError(
-            f"No node_coords.npy found under {data_path}. "
-            "SIREN training requires explicit node coordinates."
+            f"No node_coords.npy found under {data_path}. " "SIREN training requires explicit node coordinates."
         )
     node_xy = np.load(nc_path)[:, :2].astype(np.float32)  # (N, 2) — drop Z
 
     disp_scale = float(np.abs(disps).max()) if normalize_displacements else 1.0
 
-    torch.manual_seed(2024); np.random.seed(2024)
+    torch.manual_seed(2024)
+    np.random.seed(2024)
     full_ds = SIRENDataset(cbs, node_xy, disps, mat_features, disp_scale=disp_scale)
-    n  = len(full_ds)
+    n = len(full_ds)
     tr, va = int(0.7 * n), int(0.15 * n)
     te = n - tr - va
     train_ds, val_ds, test_ds = random_split(full_ds, [tr, va, te])
 
-    _pin     = torch.cuda.is_available()
+    _pin = torch.cuda.is_available()
     _collate = siren_collate_fn(k_nodes)
     return (
-        DataLoader(train_ds, batch_size=batch_size, shuffle=True,
-                   num_workers=0, pin_memory=_pin, collate_fn=_collate),
-        DataLoader(val_ds,   batch_size=batch_size, shuffle=False,
-                   num_workers=0, pin_memory=_pin, collate_fn=_collate),
-        DataLoader(test_ds,  batch_size=batch_size, shuffle=False,
-                   num_workers=0, pin_memory=_pin, collate_fn=_collate),
+        DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=_pin, collate_fn=_collate),
+        DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin, collate_fn=_collate),
+        DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin, collate_fn=_collate),
         node_xy.shape[0],
         disp_scale,
     )
 
 
-def train_save_siren_gui(data_path: str, epochs: int = 50,
-                          latent_dim: int = 256, k_nodes: int = 512,
-                          batch_size: int = 8, use_material: bool = False):
+def train_save_siren_gui(
+    data_path: str,
+    epochs: int = 50,
+    latent_dim: int = 256,
+    k_nodes: int = 512,
+    batch_size: int = 8,
+    use_material: bool = False,
+):
     """Train SIRENPredictor on *data_path* and save to saved_model_siren/.
 
     Uses random K-node subsampling so GPU memory is O(B × k_nodes)
@@ -2621,7 +2742,7 @@ def train_save_siren_gui(data_path: str, epochs: int = 50,
         k_nodes    : Nodes sampled per forward pass (GPU memory control knob).
         batch_size : Batch size.
     """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
         print(f"GPU: {torch.cuda.get_device_name(0)} — training on CUDA.")
     else:
@@ -2629,17 +2750,23 @@ def train_save_siren_gui(data_path: str, epochs: int = 50,
 
     print(f"Loading data (k_nodes={k_nodes}, batch_size={batch_size})...")
     train_loader, val_loader, _, N_total, _disp_scale_gui = create_siren_loaders(
-        data_path, k_nodes=k_nodes, batch_size=batch_size,
+        data_path,
+        k_nodes=k_nodes,
+        batch_size=batch_size,
         load_material_features=use_material,
     )
     _mat_dim = MAT_DIM if use_material else 0
 
     model = SIRENPredictor(input_channels=1, latent_dim=latent_dim, mat_dim=_mat_dim).to(device)
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"SIRENPredictor: latent_dim={latent_dim}  k_nodes={k_nodes}  "
-          f"params={n_params:,}  ({n_params*4/1e6:.2f} MB weights)")
-    print(f"Full mesh N={N_total}  memory per step: B×K×3 = "
-          f"{batch_size}×{k_nodes}×3 = {batch_size*k_nodes*3*4/1e6:.2f} MB")
+    print(
+        f"SIRENPredictor: latent_dim={latent_dim}  k_nodes={k_nodes}  "
+        f"params={n_params:,}  ({n_params*4/1e6:.2f} MB weights)"
+    )
+    print(
+        f"Full mesh N={N_total}  memory per step: B×K×3 = "
+        f"{batch_size}×{k_nodes}×3 = {batch_size*k_nodes*3*4/1e6:.2f} MB"
+    )
 
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-5)
@@ -2649,16 +2776,17 @@ def train_save_siren_gui(data_path: str, epochs: int = 50,
     save_dir.mkdir(parents=True, exist_ok=True)
     plot_path = str(save_dir / "training_loss_curve.png")
 
-    best_val_loss = float('inf')
-    patience      = 10
-    patience_ctr  = 0
+    best_val_loss = float("inf")
+    patience = 10
+    patience_ctr = 0
     train_losses, val_losses = [], []
 
     fig, ax = plt.subplots()
-    ax.set_xlabel('Epoch'); ax.set_ylabel('Loss (subsampled MSE)')
-    ax.set_title('SIREN Training and Validation Loss')
-    line1, = ax.plot([], [], label='Train', color='blue')
-    line2, = ax.plot([], [], label='Val',   color='orange')
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss (subsampled MSE)")
+    ax.set_title("SIREN Training and Validation Loss")
+    (line1,) = ax.plot([], [], label="Train", color="blue")
+    (line2,) = ax.plot([], [], label="Val", color="orange")
     ax.legend()
 
     for epoch in range(epochs):
@@ -2671,9 +2799,9 @@ def train_save_siren_gui(data_path: str, epochs: int = 50,
             else:
                 cbs, coords, disps = batch
                 mats = None
-            cbs    = cbs.to(device)
+            cbs = cbs.to(device)
             coords = coords.to(device)
-            disps  = disps.to(device)
+            disps = disps.to(device)
             optimizer.zero_grad()
             pred = model(cbs, coords, mats)
             loss = criterion(pred, disps)
@@ -2703,7 +2831,7 @@ def train_save_siren_gui(data_path: str, epochs: int = 50,
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            patience_ctr  = 0
+            patience_ctr = 0
             torch.save(model, save_dir / "trained_siren_best.pth")
         else:
             patience_ctr += 1
@@ -2715,10 +2843,11 @@ def train_save_siren_gui(data_path: str, epochs: int = 50,
         line1.set_ydata(train_losses)
         line2.set_xdata(range(1, len(val_losses) + 1))
         line2.set_ydata(val_losses)
-        ax.relim(); ax.autoscale_view()
+        ax.relim()
+        ax.autoscale_view()
         print(f"Epoch {epoch+1}/{epochs}  train={train_loss:.4e}  val={val_loss:.4e}")
 
-    plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+    plt.savefig(plot_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
     save_path = save_dir / "trained_siren_full_model.pth"
@@ -2726,18 +2855,23 @@ def train_save_siren_gui(data_path: str, epochs: int = 50,
     print(f"SIREN model saved to {save_path}")
 
     _ref_src = next(
-        (p / "node_coords.npy" for p in sorted(Path(data_path).glob("Simulation_*"))
-         if (p / "node_coords.npy").exists()), None)
+        (
+            p / "node_coords.npy"
+            for p in sorted(Path(data_path).glob("Simulation_*"))
+            if (p / "node_coords.npy").exists()
+        ),
+        None,
+    )
     if _ref_src:
         import shutil as _sh
+
         _sh.copy2(str(_ref_src), str(save_dir / "reference_node_coords.npy"))
         print("Reference node coords saved.")
 
     return train_losses, val_losses
 
 
-def load_and_evaluate_siren_gui(model_path: str, test_data_path: str,
-                                 pred_save_dir: str, chunk_size: int = 4096):
+def load_and_evaluate_siren_gui(model_path: str, test_data_path: str, pred_save_dir: str, chunk_size: int = 4096):
     """Load a SIRENPredictor and evaluate on the full node mesh in chunks.
 
     Chunks the full N-node coordinate set so inference never allocates more
@@ -2749,30 +2883,28 @@ def load_and_evaluate_siren_gui(model_path: str, test_data_path: str,
         pred_save_dir  : Output directory for pred_displacements.npy files.
         chunk_size     : Nodes per inference chunk (default 4096).
     """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model  = torch.load(model_path, map_location=device, weights_only=False)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = torch.load(model_path, map_location=device, weights_only=False)
     model.eval()
 
-    if os.path.exists(os.path.join(test_data_path, 'checkerboard.npy')):
-        cbs = np.stack([np.load(os.path.join(test_data_path, 'checkerboard.npy'))])
+    if os.path.exists(os.path.join(test_data_path, "checkerboard.npy")):
+        cbs = np.stack([np.load(os.path.join(test_data_path, "checkerboard.npy"))])
     else:
-        loaded = load_all_npy_files(test_data_path, ('checkerboard',), skip_missing=True)
-        cbs = loaded['checkerboard']
+        loaded = load_all_npy_files(test_data_path, ("checkerboard",), skip_missing=True)
+        cbs = loaded["checkerboard"]
 
-    nc_path = os.path.join(test_data_path, 'node_coords.npy')
+    nc_path = os.path.join(test_data_path, "node_coords.npy")
     if not os.path.exists(nc_path):
         for d in sorted(os.listdir(test_data_path)):
-            cand = os.path.join(test_data_path, d, 'node_coords.npy')
+            cand = os.path.join(test_data_path, d, "node_coords.npy")
             if os.path.exists(cand):
-                nc_path = cand; break
+                nc_path = cand
+                break
     if not os.path.exists(nc_path):
         raise FileNotFoundError(
-            f"node_coords.npy not found in {test_data_path}. "
-            "SIREN inference requires node coordinates."
+            f"node_coords.npy not found in {test_data_path}. " "SIREN inference requires node coordinates."
         )
-    node_xy = SIRENDataset._normalise_coords(
-        np.load(nc_path)[:, :2].astype(np.float32)
-    )
+    node_xy = SIRENDataset._normalise_coords(np.load(nc_path)[:, :2].astype(np.float32))
     N = len(node_xy)
 
     os.makedirs(pred_save_dir, exist_ok=True)
@@ -2784,9 +2916,8 @@ def load_and_evaluate_siren_gui(model_path: str, test_data_path: str,
             z = model.encode(cb_t)  # (1, latent_dim)
             chunks = []
             for start in range(0, N, chunk_size):
-                end   = min(start + chunk_size, N)
-                xy_ch = torch.tensor(node_xy[start:end],
-                                     dtype=torch.float32).to(device)
+                end = min(start + chunk_size, N)
+                xy_ch = torch.tensor(node_xy[start:end], dtype=torch.float32).to(device)
                 chunks.append(model.inr(xy_ch, z)[0].cpu().numpy())  # (K_ch, 3)
 
         pred = np.concatenate(chunks, axis=0)  # (N, 3)
@@ -2794,15 +2925,15 @@ def load_and_evaluate_siren_gui(model_path: str, test_data_path: str,
         batch_dir = os.path.join(pred_save_dir, f"Simulation_{idx}")
         os.makedirs(batch_dir, exist_ok=True)
         np.save(os.path.join(batch_dir, "pred_displacements.npy"), pred)
-        np.savetxt(os.path.join(batch_dir, "pred_displacements.csv"),
-                   pred, delimiter=",")
+        np.savetxt(os.path.join(batch_dir, "pred_displacements.csv"), pred, delimiter=",")
 
-    print(f"SIREN evaluation complete. N={N} nodes. "
-          f"Predictions saved to {pred_save_dir}")
+    print(f"SIREN evaluation complete. N={N} nodes. " f"Predictions saved to {pred_save_dir}")
 
 
 ### Evaluation_GUI part
-def create_test_loader(test_data_path, load_files=("checkerboard", "displacements"), batch_size=1, norm_stats_path=None):
+def create_test_loader(
+    test_data_path, load_files=("checkerboard", "displacements"), batch_size=1, norm_stats_path=None
+):
     """
     Create a DataLoader using the entire dataset from test_data_path.
 
@@ -2873,8 +3004,10 @@ def create_test_loader(test_data_path, load_files=("checkerboard", "displacement
     else:
         normalized_dataset = NormalizedDataset(full_dataset)
         if norm_stats_path:
-            print(f"[Warning] normalization_stats.npy not found at {norm_stats_path} — "
-                  "using evaluation data's own min/max (intensity mismatch possible).")
+            print(
+                f"[Warning] normalization_stats.npy not found at {norm_stats_path} — "
+                "using evaluation data's own min/max (intensity mismatch possible)."
+            )
 
     # Create a DataLoader for the entire dataset.
     # pin_memory speeds up CPU->GPU transfers; num_workers=0 avoids Windows CUDA issues.
@@ -2907,16 +3040,26 @@ def _interpolate_displacements(pred_flat, ref_coords, eval_coords):
         np.ndarray: (N_eval, 3) interpolated displacements.
     """
     from scipy.interpolate import RBFInterpolator
+
     interp = RBFInterpolator(
-        ref_coords[:, :2], pred_flat,
-        kernel='thin_plate_spline', smoothing=1e-6,
+        ref_coords[:, :2],
+        pred_flat,
+        kernel="thin_plate_spline",
+        smoothing=1e-6,
     )
     return interp(eval_coords[:, :2])
 
 
-def evaluate_model_gui(model, test_loader, criterion, pred_save_dir, device=None,
-                       ref_node_coords=None, eval_node_coords=None,
-                       mat_features_tensor=None):
+def evaluate_model_gui(
+    model,
+    test_loader,
+    criterion,
+    pred_save_dir,
+    device=None,
+    ref_node_coords=None,
+    eval_node_coords=None,
+    mat_features_tensor=None,
+):
     """
     Evaluate the model on the test set and save predictions.
 
@@ -2934,8 +3077,8 @@ def evaluate_model_gui(model, test_loader, criterion, pred_save_dir, device=None
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model.eval()
-    total_mse    = 0.0
-    batch_count  = 0
+    total_mse = 0.0
+    batch_count = 0
     metric_count = 0  # batches where MSE was computable
 
     os.makedirs(pred_save_dir, exist_ok=True)
@@ -2956,12 +3099,12 @@ def evaluate_model_gui(model, test_loader, criterion, pred_save_dir, device=None
                 checkerboard = torch.nn.functional.interpolate(
                     checkerboard,
                     size=(trained_G, trained_G),
-                    mode='bilinear',
+                    mode="bilinear",
                     align_corners=False,
                 )
 
             # Forward pass — model returns (batch, N_train, 3)
-            _mat_dim = getattr(model, 'mat_dim', 0)
+            _mat_dim = getattr(model, "mat_dim", 0)
             if mat_features_tensor is not None and _mat_dim > 0:
                 batch_sz = checkerboard.shape[0]
                 mat = mat_features_tensor.expand(batch_sz, -1).to(device)
@@ -2971,26 +3114,23 @@ def evaluate_model_gui(model, test_loader, criterion, pred_save_dir, device=None
 
             # ---- Layer 2: output mesh spatial interpolation ----
             N_train = predicted_displacements.shape[1]
-            N_eval  = displacement.shape[1]
+            N_eval = displacement.shape[1]
 
             if N_train != N_eval:
                 if ref_node_coords is not None and eval_node_coords is not None:
-                    print(f"[Interp] Displacement nodes {N_train} -> {N_eval} "
-                          f"via thin-plate-spline RBF")
+                    print(f"[Interp] Displacement nodes {N_train} -> {N_eval} " f"via thin-plate-spline RBF")
                     batch_sz = predicted_displacements.shape[0]
-                    pred_np  = predicted_displacements.cpu().numpy()  # (batch, N_train, 3)
+                    pred_np = predicted_displacements.cpu().numpy()  # (batch, N_train, 3)
                     interped = np.zeros((batch_sz, N_eval, 3), dtype=np.float32)
                     for b in range(batch_sz):
-                        interped[b] = _interpolate_displacements(
-                            pred_np[b], ref_node_coords, eval_node_coords
-                        )
-                    predicted_displacements = torch.tensor(
-                        interped, dtype=torch.float32, device=device
-                    )
+                        interped[b] = _interpolate_displacements(pred_np[b], ref_node_coords, eval_node_coords)
+                    predicted_displacements = torch.tensor(interped, dtype=torch.float32, device=device)
                 else:
-                    print(f"[Warning] Node count mismatch ({N_train} vs {N_eval}). "
-                          f"reference_node_coords.npy not found next to model — "
-                          f"saving raw model output; MSE skipped for this batch.")
+                    print(
+                        f"[Warning] Node count mismatch ({N_train} vs {N_eval}). "
+                        f"reference_node_coords.npy not found next to model — "
+                        f"saving raw model output; MSE skipped for this batch."
+                    )
 
             # Save predictions — always as (N, 3), never with a leading batch dim.
             # data_viz.compute_deformed_mesh loads displacements.npy and indexes it
@@ -2998,7 +3138,7 @@ def evaluate_model_gui(model, test_loader, criterion, pred_save_dir, device=None
             # give (N, 3) instead and raise a broadcast error.
             batch_dir = os.path.join(pred_save_dir, f"Simulation_{batch_idx}")
             os.makedirs(batch_dir, exist_ok=True)
-            pred_to_save = predicted_displacements.cpu().numpy()   # (B, N, 3)
+            pred_to_save = predicted_displacements.cpu().numpy()  # (B, N, 3)
             pred_2d = pred_to_save[0] if pred_to_save.ndim == 3 else pred_to_save
             np.save(os.path.join(batch_dir, "pred_displacements.npy"), pred_2d)
             np.savetxt(
@@ -3018,20 +3158,19 @@ def evaluate_model_gui(model, test_loader, criterion, pred_save_dir, device=None
 
             # Compute loss only when output and ground-truth shapes match
             if predicted_displacements.shape == displacement.shape:
-                total_mse   += criterion(predicted_displacements, displacement).item()
+                total_mse += criterion(predicted_displacements, displacement).item()
                 metric_count += 1
 
     if metric_count == 0:
         print("Warning: MSE could not be computed (shape mismatch, no node coords).")
-        return float('nan')
+        return float("nan")
 
     overall_mse = total_mse / metric_count
     print(f"Overall Mean Squared Error (MSE) on Test Set: {overall_mse:.10f}")
     return overall_mse
 
 
-def load_and_evaluate_model_gui(model_path, test_data_path, pred_save_dir,
-                                mat_features=None):
+def load_and_evaluate_model_gui(model_path, test_data_path, pred_save_dir, mat_features=None):
     """
     Load a previously saved model and run inference on a new peen-intensity
     folder, saving the predicted displacements for later visualisation.
@@ -3088,25 +3227,23 @@ def load_and_evaluate_model_gui(model_path, test_data_path, pred_save_dir,
     # ---- Load node-coordinate arrays for mesh interpolation ----
     # reference_node_coords.npy is saved alongside the model by train_save_gui.
     # node_coords.npy lives in the evaluation simulation folder.
-    ref_coords_path  = os.path.join(model_dir, "reference_node_coords.npy")
+    ref_coords_path = os.path.join(model_dir, "reference_node_coords.npy")
     eval_coords_path = os.path.join(test_data_path, "node_coords.npy")
 
-    ref_node_coords  = np.load(ref_coords_path)  if os.path.exists(ref_coords_path)  else None
+    ref_node_coords = np.load(ref_coords_path) if os.path.exists(ref_coords_path) else None
     eval_node_coords = np.load(eval_coords_path) if os.path.exists(eval_coords_path) else None
 
     if ref_node_coords is None:
-        print("[Info] reference_node_coords.npy not found next to model — "
-              "output mesh interpolation disabled.")
+        print("[Info] reference_node_coords.npy not found next to model — " "output mesh interpolation disabled.")
     if eval_node_coords is None:
-        print("[Info] node_coords.npy not found in test folder — "
-              "output mesh interpolation disabled.")
+        print("[Info] node_coords.npy not found in test folder — " "output mesh interpolation disabled.")
 
     # Build material feature tensor if provided
     mat_t = None
     if mat_features is not None:
-        mat_t = torch.tensor(
-            np.asarray(mat_features, dtype=np.float32), dtype=torch.float32
-        ).unsqueeze(0).to(device)  # shape (1, 7)
+        mat_t = (
+            torch.tensor(np.asarray(mat_features, dtype=np.float32), dtype=torch.float32).unsqueeze(0).to(device)
+        )  # shape (1, 7)
         print(f"Material conditioning enabled (mat_features shape: {mat_t.shape}).")
 
     # Define loss function
@@ -3130,6 +3267,7 @@ def load_and_evaluate_model_gui(model_path, test_data_path, pred_save_dir,
 # ---------------------------------------------------------------------------
 # Curved-surface ML inference (Layer 3)
 # ---------------------------------------------------------------------------
+
 
 def curved_surface_checkerboard(
     stl_surface,
@@ -3162,29 +3300,33 @@ def curved_surface_checkerboard(
     """
     from gaussian_nozzle_dataset_gen import sample_gaussian_nozzle_shots
 
-    bounds   = stl_surface.bounds()
-    x_min    = float(bounds[0, 0])
-    y_min    = float(bounds[0, 1])
-    Lx       = max(float(bounds[1, 0]) - x_min, 1e-9)
-    Ly       = max(float(bounds[1, 1]) - y_min, 1e-9)
-    sigma_V  = V_mean * sigma_V_frac
-    rng      = np.random.default_rng(seed)
+    bounds = stl_surface.bounds()
+    x_min = float(bounds[0, 0])
+    y_min = float(bounds[0, 1])
+    Lx = max(float(bounds[1, 0]) - x_min, 1e-9)
+    Ly = max(float(bounds[1, 1]) - y_min, 1e-9)
+    sigma_V = V_mean * sigma_V_frac
+    rng = np.random.default_rng(seed)
 
     all_xyz: list = []
-    all_vn:  list = []
+    all_vn: list = []
 
     for pos in trajectory.positions:
         nx, ny, nz = float(pos[0]), float(pos[1]), float(pos[2])
-        h_eff      = max(abs(nz), 0.001)
+        h_eff = max(abs(nz), 0.001)
 
         centres_2d, V_norm, _, _ = sample_gaussian_nozzle_shots(
-            h_nozzle=h_eff, theta_div=theta_div,
-            V_mean=V_mean, sigma_V=sigma_V,
+            h_nozzle=h_eff,
+            theta_div=theta_div,
+            V_mean=V_mean,
+            sigma_V=sigma_V,
             n_shots=n_shots_per_step,
-            Lx=Lx, Ly=Ly,
+            Lx=Lx,
+            Ly=Ly,
             nozzle_x=nx - x_min,
             nozzle_y=ny - y_min,
-            V_exit_min=V_exit_min, rng=rng,
+            V_exit_min=V_exit_min,
+            rng=rng,
         )
         shot_xy = centres_2d.copy()
         shot_xy[:, 0] += x_min
@@ -3196,8 +3338,8 @@ def curved_surface_checkerboard(
 
     if all_xyz:
         xyz_np = np.concatenate(all_xyz, axis=0)
-        vn_np  = np.concatenate(all_vn,  axis=0)
-        return stl_surface.shots_to_checkerboard(xyz_np, vn_np ** 2, G)
+        vn_np = np.concatenate(all_vn, axis=0)
+        return stl_surface.shots_to_checkerboard(xyz_np, vn_np**2, G)
     return np.zeros((G, G), dtype=np.float32)
 
 
@@ -3250,15 +3392,18 @@ def curved_surface_inference(
     if isinstance(trajectory_or_checkerboard, np.ndarray):
         cb = np.asarray(trajectory_or_checkerboard, dtype=np.float32)
         if cb.ndim != 2 or cb.shape[0] != cb.shape[1]:
-            raise ValueError(
-                f"Precomputed checkerboard must be a square 2D array, got {cb.shape}"
-            )
+            raise ValueError(f"Precomputed checkerboard must be a square 2D array, got {cb.shape}")
     else:
         if G is None:
             raise ValueError("G must be specified when passing a NozzleTrajectory.")
         _defaults = dict(
-            h_nozzle=0.15, theta_div=0.2618, V_mean=50.0,
-            sigma_V_frac=0.10, n_shots_per_step=10, V_exit_min=5.0, seed=42,
+            h_nozzle=0.15,
+            theta_div=0.2618,
+            V_mean=50.0,
+            sigma_V_frac=0.10,
+            n_shots_per_step=10,
+            V_exit_min=5.0,
+            seed=42,
         )
         _defaults.update(traj_kwargs)
         cb = curved_surface_checkerboard(
@@ -3270,15 +3415,17 @@ def curved_surface_inference(
 
     # ---- Load model and run forward pass ----
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model  = torch.load(model_path, weights_only=False, map_location=device)
+    model = torch.load(model_path, weights_only=False, map_location=device)
     model.eval()
 
-    trained_G  = _infer_trained_grid_size(model)
-    cb_tensor  = torch.tensor(cb[None, None, :, :], dtype=torch.float32, device=device)
+    trained_G = _infer_trained_grid_size(model)
+    cb_tensor = torch.tensor(cb[None, None, :, :], dtype=torch.float32, device=device)
     if trained_G is not None and cb_tensor.shape[-1] != trained_G:
         cb_tensor = torch.nn.functional.interpolate(
-            cb_tensor, size=(trained_G, trained_G),
-            mode="bilinear", align_corners=False,
+            cb_tensor,
+            size=(trained_G, trained_G),
+            mode="bilinear",
+            align_corners=False,
         )
 
     # SIRENPredictor handles its own forward pass in the isinstance block below.
@@ -3295,32 +3442,30 @@ def curved_surface_inference(
     # thin-plate-spline RBF path with coordinate normalisation.
     if isinstance(model, ConvDecoderPredictor):
         stl_xy = surface.vertices[:, :2].astype(np.float32)
-        nc_t   = torch.tensor(stl_xy, dtype=torch.float32, device=device)
+        nc_t = torch.tensor(stl_xy, dtype=torch.float32, device=device)
         disp_on_stl = sample_field_at_coords(raw_out, nc_t)[0].cpu().numpy()  # (V, 3)
-        pred_np     = raw_out[0].permute(1, 2, 0).reshape(-1, 3).cpu().numpy()  # (H*W, 3) for saving
-        print(f"[curved_surface_inference] ConvDecoder: bilinear-sampled "
-              f"{surface.n_vertices} STL vertices from ({model.out_H}×{model.out_W}) field.")
-    elif isinstance(model, SIRENPredictor):
-        stl_xy_norm = SIRENDataset._normalise_coords(
-            surface.vertices[:, :2].astype(np.float32).copy()
+        pred_np = raw_out[0].permute(1, 2, 0).reshape(-1, 3).cpu().numpy()  # (H*W, 3) for saving
+        print(
+            f"[curved_surface_inference] ConvDecoder: bilinear-sampled "
+            f"{surface.n_vertices} STL vertices from ({model.out_H}×{model.out_W}) field."
         )
+    elif isinstance(model, SIRENPredictor):
+        stl_xy_norm = SIRENDataset._normalise_coords(surface.vertices[:, :2].astype(np.float32).copy())
         V = len(stl_xy_norm)
         with torch.no_grad():
             z = model.encode(cb_tensor)  # (1, latent_dim)
             _chunks = []
             for _start in range(0, V, 4096):
-                _end  = min(_start + 4096, V)
-                _xy   = torch.tensor(stl_xy_norm[_start:_end],
-                                     dtype=torch.float32, device=device)
+                _end = min(_start + 4096, V)
+                _xy = torch.tensor(stl_xy_norm[_start:_end], dtype=torch.float32, device=device)
                 _chunks.append(model.inr(_xy, z)[0].cpu().numpy())
         disp_on_stl = np.concatenate(_chunks, axis=0)  # (V, 3)
-        pred_np     = disp_on_stl
-        print(f"[curved_surface_inference] SIRENPredictor: evaluated "
-              f"{V} STL vertices in chunks.")
+        pred_np = disp_on_stl
+        print(f"[curved_surface_inference] SIRENPredictor: evaluated " f"{V} STL vertices in chunks.")
     else:
-        pred_np = raw_out[0].cpu().numpy()        # (N_train, 3)
+        pred_np = raw_out[0].cpu().numpy()  # (N_train, 3)
 
-        model_dir       = os.path.dirname(os.path.abspath(model_path))
+        model_dir = os.path.dirname(os.path.abspath(model_path))
         ref_coords_path = os.path.join(model_dir, "reference_node_coords.npy")
 
         if os.path.exists(ref_coords_path):
@@ -3329,8 +3474,8 @@ def curved_surface_inference(
             # Normalise both coordinate systems to [0,1] before RBF interpolation so
             # that different unit scales (e.g. training plate in metres, STL in mm)
             # don't cause wild extrapolation.
-            ref_xy  = ref_coords[:, :2].astype(np.float64)
-            stl_xy  = surface.vertices[:, :2].astype(np.float64)
+            ref_xy = ref_coords[:, :2].astype(np.float64)
+            stl_xy = surface.vertices[:, :2].astype(np.float64)
 
             r_min, r_max = ref_xy.min(axis=0), ref_xy.max(axis=0)
             s_min, s_max = stl_xy.min(axis=0), stl_xy.max(axis=0)
@@ -3340,9 +3485,7 @@ def curved_surface_inference(
             ref_norm = np.column_stack([(ref_xy - r_min) / r_range, np.zeros(len(ref_xy))])
             stl_norm = np.column_stack([(stl_xy - s_min) / s_range, np.zeros(len(stl_xy))])
 
-            disp_on_stl = _interpolate_displacements(
-                pred_np, ref_norm.astype(np.float32), stl_norm.astype(np.float32)
-            )
+            disp_on_stl = _interpolate_displacements(pred_np, ref_norm.astype(np.float32), stl_norm.astype(np.float32))
         else:
             disp_on_stl = pred_np
             print(
@@ -3352,7 +3495,7 @@ def curved_surface_inference(
 
     # ---- Layer 3: rotate displacements into local surface normals ----
     if len(disp_on_stl) == surface.n_vertices:
-        R_matrices   = surface.vertex_normal_rotation_matrices()   # (V, 3, 3)
+        R_matrices = surface.vertex_normal_rotation_matrices()  # (V, 3, 3)
         disp_rotated = np.einsum("vij,vj->vi", R_matrices, disp_on_stl).astype(np.float32)
     else:
         disp_rotated = disp_on_stl.astype(np.float32)
@@ -3365,28 +3508,29 @@ def curved_surface_inference(
     # ---- Save ----
     if pred_save_dir is not None:
         os.makedirs(pred_save_dir, exist_ok=True)
-        np.save(os.path.join(pred_save_dir, "pred_displacements_flat.npy"),   pred_np)
+        np.save(os.path.join(pred_save_dir, "pred_displacements_flat.npy"), pred_np)
         np.save(os.path.join(pred_save_dir, "pred_displacements_on_stl.npy"), disp_rotated)
         # Save as both names: checkerboard_used.npy (descriptive) and checkerboard.npy
         # so that visualize_all() / visualize_checkerboard() can find it by the standard name.
-        np.save(os.path.join(pred_save_dir, "checkerboard_used.npy"),         cb)
-        np.save(os.path.join(pred_save_dir, "checkerboard.npy"),              cb)
-        np.save(os.path.join(pred_save_dir, "stl_vertex_normals.npy"),        surface.vertex_normals)
+        np.save(os.path.join(pred_save_dir, "checkerboard_used.npy"), cb)
+        np.save(os.path.join(pred_save_dir, "checkerboard.npy"), cb)
+        np.save(os.path.join(pred_save_dir, "stl_vertex_normals.npy"), surface.vertex_normals)
         surface.save_arrays(pred_save_dir)
         print(f"[curved_surface_inference] Predictions saved to: {pred_save_dir}")
 
     return {
-        "displacements_flat":   pred_np,
+        "displacements_flat": pred_np,
         "displacements_on_stl": disp_rotated,
-        "vertex_normals":       surface.vertex_normals,
-        "checkerboard":         cb,
-        "stl_surface":          surface,
+        "vertex_normals": surface.vertex_normals,
+        "checkerboard": cb,
+        "stl_surface": surface,
     }
 
 
 # ============================================================
 # Influence-field ConvDecoder: node-resolution physics kernels
 # ============================================================
+
 
 class InfluenceFieldDataset(Dataset):
     """Dataset serving (influence_fields, disp_field) pairs.
@@ -3396,15 +3540,16 @@ class InfluenceFieldDataset(Dataset):
     displacements.npy     : (N_nodes, 3) float32  — reshaped to (3, Nx+1, Ny+1)
     """
 
-    def __init__(self, fields: np.ndarray, displacements: np.ndarray,
-                 grid_H: int, grid_W: int, disp_scale: float = 1.0):
-        self.fields = torch.tensor(fields, dtype=torch.float32)           # (N,4,H,W)
+    def __init__(
+        self, fields: np.ndarray, displacements: np.ndarray, grid_H: int, grid_W: int, disp_scale: float = 1.0
+    ):
+        self.fields = torch.tensor(fields, dtype=torch.float32)  # (N,4,H,W)
         _disp = displacements / disp_scale
         # reshape flat (N_nodes, 3) → (3, H, W)
         self.disp = torch.tensor(
             _disp.reshape(-1, grid_H, grid_W, 3).transpose(0, 3, 1, 2),
             dtype=torch.float32,
-        )   # (N, 3, H, W)
+        )  # (N, 3, H, W)
         self.disp_scale = disp_scale
 
     def __len__(self) -> int:
@@ -3435,16 +3580,20 @@ def create_influence_field_loaders(
         per_sim_scales  : (N,) float32 array of per-sim max abs displacement (m)
     """
     sim_dirs = sorted(
-        [d for d in os.listdir(dataset_dir)
-         if os.path.isdir(os.path.join(dataset_dir, d))
-         and d.startswith("Simulation_") and d[len("Simulation_"):].isdigit()],
+        [
+            d
+            for d in os.listdir(dataset_dir)
+            if os.path.isdir(os.path.join(dataset_dir, d))
+            and d.startswith("Simulation_")
+            and d[len("Simulation_") :].isdigit()
+        ],
         key=lambda x: int(x.split("_")[1]),
     )
 
     all_fields, all_disp = [], []
     for sim_name in sim_dirs:
         sd = os.path.join(dataset_dir, sim_name)
-        inf_path  = os.path.join(sd, "influence_fields.npy")
+        inf_path = os.path.join(sd, "influence_fields.npy")
         disp_path = os.path.join(sd, "displacements.npy")
         if not os.path.exists(inf_path) or not os.path.exists(disp_path):
             continue
@@ -3453,12 +3602,11 @@ def create_influence_field_loaders(
 
     if not all_fields:
         raise FileNotFoundError(
-            f"No simulations with influence_fields.npy found in {dataset_dir}. "
-            "Run backfill_physics_files.py first."
+            f"No simulations with influence_fields.npy found in {dataset_dir}. " "Run backfill_physics_files.py first."
         )
 
     fields_arr = np.stack(all_fields, axis=0)  # (N, 4, H, W)
-    disp_arr   = np.stack(all_disp,   axis=0)  # (N, nodes, 3)
+    disp_arr = np.stack(all_disp, axis=0)  # (N, nodes, 3)
 
     grid_H = fields_arr.shape[2]
     grid_W = fields_arr.shape[3]
@@ -3475,31 +3623,35 @@ def create_influence_field_loaders(
         per_sim_scales = np.ones(len(disp_arr), dtype=np.float32)
         disp_scale = 1.0
 
-    torch.manual_seed(2024); np.random.seed(2024)
+    torch.manual_seed(2024)
+    np.random.seed(2024)
     # disp_scale=1.0: data is already pre-normalised above
     full_ds = InfluenceFieldDataset(fields_arr, disp_arr, grid_H, grid_W, disp_scale=1.0)
     n = len(full_ds)
     n_train = int(0.70 * n)
-    n_val   = int(0.15 * n)
-    n_test  = n - n_train - n_val
+    n_val = int(0.15 * n)
+    n_test = n - n_train - n_val
     tr_ds, va_ds, te_ds = random_split(full_ds, [n_train, n_val, n_test])
 
     _pin = torch.cuda.is_available()
     return (
-        DataLoader(tr_ds, batch_size=batch_size, shuffle=True,  num_workers=0, pin_memory=_pin),
+        DataLoader(tr_ds, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=_pin),
         DataLoader(va_ds, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin),
         DataLoader(te_ds, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=_pin),
-        grid_H, grid_W, disp_scale, per_sim_scales,
+        grid_H,
+        grid_W,
+        disp_scale,
+        per_sim_scales,
     )
 
 
 def train_influence_field_model(
-    dataset_dir:    str,
+    dataset_dir: str,
     model_save_dir: str,
-    epochs:         int   = 120,
-    patience:       int   = 20,
-    batch_size:     int   = 16,
-    lr:             float = 1e-3,
+    epochs: int = 120,
+    patience: int = 20,
+    batch_size: int = 16,
+    lr: float = 1e-3,
 ) -> dict:
     """Train a ConvDecoderPredictor on node-resolution influence fields.
 
@@ -3520,22 +3672,23 @@ def train_influence_field_model(
     t0 = time.perf_counter()
 
     try:
-        train_loader, val_loader, test_loader, grid_H, grid_W, disp_scale, _per_sim_scales = \
+        train_loader, val_loader, test_loader, grid_H, grid_W, disp_scale, _per_sim_scales = (
             create_influence_field_loaders(dataset_dir, batch_size=batch_size)
+        )
 
-        model = ConvDecoderPredictor(
-            input_channels=4, out_H=grid_H, out_W=grid_W, mat_dim=0
-        ).to(device)
+        model = ConvDecoderPredictor(input_channels=4, out_H=grid_H, out_W=grid_W, mat_dim=0).to(device)
 
         n_params = sum(p.numel() for p in model.parameters())
-        print(f"    InfluenceField ConvDecoder: grid={grid_H}x{grid_W}  "
-              f"disp_scale={disp_scale:.3e}  params={n_params:,}  device={device}")
+        print(
+            f"    InfluenceField ConvDecoder: grid={grid_H}x{grid_W}  "
+            f"disp_scale={disp_scale:.3e}  params={n_params:,}  device={device}"
+        )
 
-        criterion  = nn.MSELoss()
-        optimizer  = optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
-        warmup_ep  = max(1, int(epochs * 0.1))
-        cosine_ep  = max(1, epochs - warmup_ep)
-        scheduler  = SequentialLR(
+        criterion = nn.MSELoss()
+        optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+        warmup_ep = max(1, int(epochs * 0.1))
+        cosine_ep = max(1, epochs - warmup_ep)
+        scheduler = SequentialLR(
             optimizer,
             schedulers=[
                 LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=warmup_ep),
@@ -3551,18 +3704,20 @@ def train_influence_field_model(
         patience_ctr = 0
         train_losses, val_losses = [], []
 
-        import matplotlib; matplotlib.use("Agg")
+        import matplotlib
+
+        matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
         use_amp = torch.cuda.is_available()
-        scaler  = torch.amp.GradScaler("cuda") if use_amp else None
+        scaler = torch.amp.GradScaler("cuda") if use_amp else None
 
         for epoch in range(epochs):
             model.train()
             ep_loss = 0.0
             for fields_b, disp_b in train_loader:
                 fields_b = fields_b.to(device)
-                disp_b   = disp_b.to(device)
+                disp_b = disp_b.to(device)
                 optimizer.zero_grad()
                 if use_amp:
                     with torch.amp.autocast("cuda"):
@@ -3571,7 +3726,8 @@ def train_influence_field_model(
                     scaler.scale(loss).backward()
                     scaler.unscale_(optimizer)
                     nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                    scaler.step(optimizer); scaler.update()
+                    scaler.step(optimizer)
+                    scaler.update()
                 else:
                     pred = model(fields_b)
                     loss = criterion(pred, disp_b)
@@ -3598,7 +3754,8 @@ def train_influence_field_model(
             print(f"    Epoch {epoch+1}/{epochs}  train={train_loss:.4e}  val={val_loss:.4e}")
 
             if val_loss < best_val:
-                best_val = val_loss; patience_ctr = 0
+                best_val = val_loss
+                patience_ctr = 0
                 torch.save(model, os.path.join(model_save_dir, "influence_field_model.pth"))
             else:
                 patience_ctr += 1
@@ -3615,38 +3772,53 @@ def train_influence_field_model(
                 all_true.append(disp_b.numpy())
         pred_np = np.concatenate(all_pred) * disp_scale  # (N, 3, H, W)
         true_np = np.concatenate(all_true) * disp_scale
-        mse  = float(np.mean((pred_np - true_np) ** 2))
+        mse = float(np.mean((pred_np - true_np) ** 2))
         rmse = float(np.sqrt(mse)) * 1e6
 
         # Save loss curve
         fig, ax = plt.subplots()
-        ax.plot(train_losses, label="Train"); ax.plot(val_losses, label="Val")
-        ax.set_xlabel("Epoch"); ax.set_ylabel("MSE (normalised)"); ax.legend()
+        ax.plot(train_losses, label="Train")
+        ax.plot(val_losses, label="Val")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("MSE (normalised)")
+        ax.legend()
         ax.set_title("InfluenceField ConvDecoder Training")
-        fig.savefig(plot_path, dpi=150, bbox_inches="tight"); plt.close(fig)
+        fig.savefig(plot_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
 
         # Save normalization info for inference
-        np.save(os.path.join(model_save_dir, "normalization_stats.npy"),
-                np.array([0.0, 1.0, disp_scale]))  # disp_scale = median per-sim scale
+        np.save(
+            os.path.join(model_save_dir, "normalization_stats.npy"), np.array([0.0, 1.0, disp_scale])
+        )  # disp_scale = median per-sim scale
         # Signal to evaluate_on_dataset that per-sim GT scale should be used
         np.save(os.path.join(model_save_dir, "per_sim_norm.npy"), np.array([True]))
         # Copy reference node coords
         ref_nc = next(
-            (Path(dataset_dir) / s / "node_coords.npy"
-             for s in sorted(os.listdir(dataset_dir),
-                             key=lambda x: int(x.split("_")[1]) if x.startswith("Simulation_") else 9999)
-             if (Path(dataset_dir) / s / "node_coords.npy").exists()),
-            None)
+            (
+                Path(dataset_dir) / s / "node_coords.npy"
+                for s in sorted(
+                    os.listdir(dataset_dir), key=lambda x: int(x.split("_")[1]) if x.startswith("Simulation_") else 9999
+                )
+                if (Path(dataset_dir) / s / "node_coords.npy").exists()
+            ),
+            None,
+        )
         if ref_nc:
             import shutil as _sh
+
             _sh.copy2(str(ref_nc), os.path.join(model_save_dir, "reference_node_coords.npy"))
 
         del model
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-        return {"mse": mse, "rmse_um": rmse, "epochs_trained": len(train_losses),
-                "disp_scale": disp_scale, "success": True}
+        return {
+            "mse": mse,
+            "rmse_um": rmse,
+            "epochs_trained": len(train_losses),
+            "disp_scale": disp_scale,
+            "success": True,
+        }
 
     except Exception as exc:
         if torch.cuda.is_available():

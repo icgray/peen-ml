@@ -28,6 +28,7 @@ Dependencies:
 Author:
 - Harshavardhan Raje
 """
+
 import tkinter as tk
 from tkinter import filedialog, ttk, messagebox
 import sys
@@ -39,17 +40,19 @@ import torch
 from PIL import Image, ImageTk
 
 # Append src folder to path such that the called python files can be called.
-sys.path.append(os.path.join(os.path.dirname(__file__), 'src', 'peen-ml'))
+sys.path.append(os.path.join(os.path.dirname(__file__), "src", "peen-ml"))
 # Deviating from PEP8 to make sure that this script can call the backend
 from model import train_model, create_data_loaders, create_model  # pylint: disable=wrong-import-position
-from model import train_save_gui, infer_dataset_shape              # pylint: disable=wrong-import-position
-from model import train_save_conv_gui, train_save_siren_gui        # pylint: disable=wrong-import-position
-from model import load_and_evaluate_model_gui                      # pylint: disable=wrong-import-position
-from model import load_and_evaluate_siren_gui                      # pylint: disable=wrong-import-position
-from model import curved_surface_inference                         # pylint: disable=wrong-import-position
-from data_viz import visualize_checkerboard, visualize_all         # pylint: disable=wrong-import-position
+from model import train_save_gui, infer_dataset_shape  # pylint: disable=wrong-import-position
+from model import train_save_conv_gui, train_save_siren_gui  # pylint: disable=wrong-import-position
+from model import load_and_evaluate_model_gui  # pylint: disable=wrong-import-position
+from model import load_and_evaluate_siren_gui  # pylint: disable=wrong-import-position
+from model import curved_surface_inference  # pylint: disable=wrong-import-position
+from data_viz import visualize_checkerboard, visualize_all  # pylint: disable=wrong-import-position
+
 try:
-    from data_viz import visualize_stl_deformation                 # pylint: disable=wrong-import-position
+    from data_viz import visualize_stl_deformation  # pylint: disable=wrong-import-position
+
     _STL_VIZ_OK = True
 except ImportError:
     _STL_VIZ_OK = False
@@ -58,19 +61,20 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Shared style constants
 # ---------------------------------------------------------------------------
-STEP_FONT   = ("Arial", 11, "bold")
-BODY_FONT   = ("Arial", 10)
-HINT_FONT   = ("Arial", 9)
-STEP_COLOR  = "#1a5276"   # dark blue step headings
-HINT_COLOR  = "#555555"   # gray hint text
-OK_COLOR    = "#1a7a4a"   # green for success status
-ERR_COLOR   = "#c0392b"   # red for error status
-INFO_COLOR  = "#2471a3"   # mid-blue for detected info
+STEP_FONT = ("Arial", 11, "bold")
+BODY_FONT = ("Arial", 10)
+HINT_FONT = ("Arial", 9)
+STEP_COLOR = "#1a5276"  # dark blue step headings
+HINT_COLOR = "#555555"  # gray hint text
+OK_COLOR = "#1a7a4a"  # green for success status
+ERR_COLOR = "#c0392b"  # red for error status
+INFO_COLOR = "#2471a3"  # mid-blue for detected info
 
 
 # ---------------------------------------------------------------------------
 # Tooltip helper
 # ---------------------------------------------------------------------------
+
 
 class ToolTip:
     """
@@ -90,9 +94,9 @@ class ToolTip:
     """
 
     def __init__(self, widget, text):
-        self.widget   = widget
-        self.text     = text
-        self.tip_win  = None          # The Toplevel window shown on hover
+        self.widget = widget
+        self.text = text
+        self.tip_win = None  # The Toplevel window shown on hover
         widget.bind("<Enter>", self._show, add="+")
         widget.bind("<Leave>", self._hide, add="+")
 
@@ -104,13 +108,13 @@ class ToolTip:
         x = event.x_root + 14
         y = event.y_root + 14
         self.tip_win = tw = tk.Toplevel(self.widget)
-        tw.wm_overrideredirect(True)   # No title bar or window border
+        tw.wm_overrideredirect(True)  # No title bar or window border
         tw.wm_geometry(f"+{x}+{y}")
         tk.Label(
             tw,
             text=self.text,
             justify="left",
-            background="#fffbe6",      # Pale yellow, easy to distinguish
+            background="#fffbe6",  # Pale yellow, easy to distinguish
             relief="solid",
             borderwidth=1,
             font=("Arial", 9),
@@ -129,6 +133,7 @@ class ToolTip:
 # ---------------------------------------------------------------------------
 # GUI helper functions
 # ---------------------------------------------------------------------------
+
 
 def check_install(package_id: str):
     """
@@ -252,6 +257,7 @@ def _section(parent, row, title, tooltip=None, pady=(10, 4)):
 # Main application class
 # ---------------------------------------------------------------------------
 
+
 class App:
     """
     Shot Peening ML Predictor GUI.
@@ -282,12 +288,12 @@ class App:
             root_tk (tk.Tk): The top-level Tk window created by the caller.
         """
         self.root = root_tk
-        self.root.title("Model GUI")        # Window title shown in the OS taskbar
-        self.root.geometry("1100x820")      # Main window size (tests check this value)
-        self.window_size = "1100x820"       # Keep a copy for reference
-        self.dialog_size = "1100x860"       # Larger size used for Train/Load dialogs
-        self.test_train_data_path = ""      # Set when the user browses for data
-        self.parent_process = None          # Reserved for any spawned sub-processes
+        self.root.title("Model GUI")  # Window title shown in the OS taskbar
+        self.root.geometry("1100x820")  # Main window size (tests check this value)
+        self.window_size = "1100x820"  # Keep a copy for reference
+        self.dialog_size = "1100x860"  # Larger size used for Train/Load dialogs
+        self.test_train_data_path = ""  # Set when the user browses for data
+        self.parent_process = None  # Reserved for any spawned sub-processes
         self.main_menu()
 
     # ------------------------------------------------------------------
@@ -316,16 +322,12 @@ class App:
 
         # -- Splash image --
         try:
-            bullet_bill_path = os.path.join(
-                os.path.dirname(__file__), 'src', 'peen-ml', 'bullet_bill.png'
-            )
+            bullet_bill_path = os.path.join(os.path.dirname(__file__), "src", "peen-ml", "bullet_bill.png")
             image = Image.open(bullet_bill_path)
             image = image.resize((360, 220), Image.Resampling.LANCZOS)
             self.splash_image = ImageTk.PhotoImage(image)
             # Store the reference on self to prevent garbage collection
-            ttk.Label(main_frame, image=self.splash_image).grid(
-                row=0, column=0, columnspan=2, pady=(10, 4)
-            )
+            ttk.Label(main_frame, image=self.splash_image).grid(row=0, column=0, columnspan=2, pady=(10, 4))
         except FileNotFoundError as e:
             raise FileNotFoundError(f"Could not locate Bullet Bill logo: {e}") from e
 
@@ -350,9 +352,7 @@ class App:
         ).grid(row=2, column=0, columnspan=2, pady=(0, 10))
 
         # -- Workflow separator --
-        ttk.Separator(main_frame, orient="horizontal").grid(
-            row=3, column=0, columnspan=2, sticky="ew", pady=4
-        )
+        ttk.Separator(main_frame, orient="horizontal").grid(row=3, column=0, columnspan=2, sticky="ew", pady=4)
         tk.Label(
             main_frame,
             text="What would you like to do?",
@@ -363,9 +363,7 @@ class App:
         # -- Train card (left column) --
         train_frame = tk.Frame(main_frame, bd=2, relief="groove", padx=12, pady=10)
         train_frame.grid(row=5, column=0, padx=16, pady=6, sticky="nsew")
-        tk.Label(
-            train_frame, text="Train Model", font=("Arial", 13, "bold"), fg=STEP_COLOR
-        ).pack(anchor="w")
+        tk.Label(train_frame, text="Train Model", font=("Arial", 13, "bold"), fg=STEP_COLOR).pack(anchor="w")
         tk.Label(
             train_frame,
             text=(
@@ -395,9 +393,7 @@ class App:
         # -- Load card (right column) --
         load_frame = tk.Frame(main_frame, bd=2, relief="groove", padx=12, pady=10)
         load_frame.grid(row=5, column=1, padx=16, pady=6, sticky="nsew")
-        tk.Label(
-            load_frame, text="Load & Evaluate Model", font=("Arial", 13, "bold"), fg=STEP_COLOR
-        ).pack(anchor="w")
+        tk.Label(load_frame, text="Load & Evaluate Model", font=("Arial", 13, "bold"), fg=STEP_COLOR).pack(anchor="w")
         tk.Label(
             load_frame,
             text=(
@@ -426,9 +422,7 @@ class App:
         ).pack(anchor="e")
 
         # -- Separator --
-        ttk.Separator(main_frame, orient="horizontal").grid(
-            row=6, column=0, columnspan=2, sticky="ew", pady=(10, 0)
-        )
+        ttk.Separator(main_frame, orient="horizontal").grid(row=6, column=0, columnspan=2, sticky="ew", pady=(10, 0))
 
         # -- Generate Dataset card (full width) --
         gen_frame = tk.Frame(main_frame, bd=2, relief="groove", padx=12, pady=10)
@@ -501,7 +495,8 @@ class App:
                 "Configure the generator, set an output folder, then click Generate.  "
                 "Progress streams live into the log below."
             ),
-            font=HINT_FONT, fg=HINT_COLOR,
+            font=HINT_FONT,
+            fg=HINT_COLOR,
         ).pack(anchor="w", pady=(0, 4))
         ttk.Separator(dialog, orient="horizontal").pack(fill="x", padx=18)
 
@@ -521,9 +516,7 @@ class App:
         t2.rowconfigure(4, weight=1)
         self._build_gaussian_gen_tab(t2, dialog, _q)
 
-        tk.Button(
-            dialog, text="Close", command=dialog.destroy, width=14
-        ).pack(pady=(0, 8))
+        tk.Button(dialog, text="Close", command=dialog.destroy, width=14).pack(pady=(0, 8))
 
     # ------------------------------------------------------------------
 
@@ -542,7 +535,10 @@ class App:
                 "Each simulation fires N shots at uniform random positions on the plate.  "
                 "~2 s/sim on CPU.  Produces Simulation_N/ folders compatible with model.py."
             ),
-            font=HINT_FONT, fg=HINT_COLOR, wraplength=900, justify="left",
+            font=HINT_FONT,
+            fg=HINT_COLOR,
+            wraplength=900,
+            justify="left",
         ).grid(row=1, column=0, sticky="w", pady=(0, 8))
 
         # ---- Parameter grid ----
@@ -553,15 +549,14 @@ class App:
 
         def _lbl(text, row, col):
             tk.Label(pf, text=text, font=BODY_FONT, anchor="e").grid(
-                row=row, column=col, sticky="e", padx=(6, 4), pady=2)
+                row=row, column=col, sticky="e", padx=(6, 4), pady=2
+            )
 
         def _ent(var, row, col, width=9):
-            tk.Entry(pf, textvariable=var, width=width, font=BODY_FONT).grid(
-                row=row, column=col, sticky="w", pady=2)
+            tk.Entry(pf, textvariable=var, width=width, font=BODY_FONT).grid(row=row, column=col, sticky="w", pady=2)
 
         def _unit(text, row, col):
-            tk.Label(pf, text=text, font=HINT_FONT, fg=HINT_COLOR).grid(
-                row=row, column=col, sticky="w", padx=(2, 10))
+            tk.Label(pf, text=text, font=HINT_FONT, fg=HINT_COLOR).grid(row=row, column=col, sticky="w", padx=(2, 10))
 
         # Output folder (full width)
         out_var = tk.StringVar(value="./Dataset_Native")
@@ -569,48 +564,73 @@ class App:
         out_ef = tk.Frame(pf)
         out_ef.grid(row=0, column=1, columnspan=6, sticky="ew", pady=2)
         out_ef.columnconfigure(0, weight=1)
-        tk.Entry(out_ef, textvariable=out_var, font=BODY_FONT).grid(
-            row=0, column=0, sticky="ew", padx=(0, 6))
-        tk.Button(out_ef, text="Browse...", width=9,
-                  command=lambda: self.browse_directory(out_var, parent=dialog)).grid(row=0, column=1)
+        tk.Entry(out_ef, textvariable=out_var, font=BODY_FONT).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        tk.Button(
+            out_ef, text="Browse...", width=9, command=lambda: self.browse_directory(out_var, parent=dialog)
+        ).grid(row=0, column=1)
 
         # Left column
-        n_sims_var    = tk.StringVar(value="100")
-        workers_var   = tk.StringVar(value="1")
-        seed_var      = tk.StringVar(value="0")
-        Nx_var        = tk.StringVar(value="50")
-        Ny_var        = tk.StringVar(value="50")
-        grid_var      = tk.StringVar(value="5")
+        n_sims_var = tk.StringVar(value="100")
+        workers_var = tk.StringVar(value="1")
+        seed_var = tk.StringVar(value="0")
+        Nx_var = tk.StringVar(value="50")
+        Ny_var = tk.StringVar(value="50")
+        grid_var = tk.StringVar(value="5")
         shots_min_var = tk.StringVar(value="20")
         shots_max_var = tk.StringVar(value="120")
 
-        _lbl("Simulations",  1, 0); _ent(n_sims_var,    1, 1)
-        _lbl("Workers",      2, 0); _ent(workers_var,   2, 1); _unit("(1=sequential)", 2, 2)
-        _lbl("Seed",         3, 0); _ent(seed_var,      3, 1)
-        _lbl("Mesh Nx",      4, 0); _ent(Nx_var,        4, 1); _unit("elements", 4, 2)
-        _lbl("Mesh Ny",      5, 0); _ent(Ny_var,        5, 1); _unit("elements", 5, 2)
-        _lbl("Grid G",       6, 0); _ent(grid_var,      6, 1); _unit("G x G checkerboard", 6, 2)
-        _lbl("Shots min",    7, 0); _ent(shots_min_var, 7, 1)
-        _lbl("Shots max",    8, 0); _ent(shots_max_var, 8, 1)
+        _lbl("Simulations", 1, 0)
+        _ent(n_sims_var, 1, 1)
+        _lbl("Workers", 2, 0)
+        _ent(workers_var, 2, 1)
+        _unit("(1=sequential)", 2, 2)
+        _lbl("Seed", 3, 0)
+        _ent(seed_var, 3, 1)
+        _lbl("Mesh Nx", 4, 0)
+        _ent(Nx_var, 4, 1)
+        _unit("elements", 4, 2)
+        _lbl("Mesh Ny", 5, 0)
+        _ent(Ny_var, 5, 1)
+        _unit("elements", 5, 2)
+        _lbl("Grid G", 6, 0)
+        _ent(grid_var, 6, 1)
+        _unit("G x G checkerboard", 6, 2)
+        _lbl("Shots min", 7, 0)
+        _ent(shots_min_var, 7, 1)
+        _lbl("Shots max", 8, 0)
+        _ent(shots_max_var, 8, 1)
 
         # Right column
-        Lx_var    = tk.StringVar(value="10")
-        Ly_var    = tk.StringVar(value="10")
+        Lx_var = tk.StringVar(value="10")
+        Ly_var = tk.StringVar(value="10")
         D_min_var = tk.StringVar(value="0.3")
         D_max_var = tk.StringVar(value="1.0")
         V_min_var = tk.StringVar(value="25")
         V_max_var = tk.StringVar(value="60")
 
-        _lbl("Plate Lx",     1, 3); _ent(Lx_var,    1, 4); _unit("mm", 1, 5)
-        _lbl("Plate Ly",     2, 3); _ent(Ly_var,    2, 4); _unit("mm", 2, 5)
-        _lbl("Shot D min",   4, 3); _ent(D_min_var, 4, 4); _unit("mm", 4, 5)
-        _lbl("Shot D max",   5, 3); _ent(D_max_var, 5, 4); _unit("mm", 5, 5)
-        _lbl("Velocity min", 7, 3); _ent(V_min_var, 7, 4); _unit("m/s", 7, 5)
-        _lbl("Velocity max", 8, 3); _ent(V_max_var, 8, 4); _unit("m/s", 8, 5)
+        _lbl("Plate Lx", 1, 3)
+        _ent(Lx_var, 1, 4)
+        _unit("mm", 1, 5)
+        _lbl("Plate Ly", 2, 3)
+        _ent(Ly_var, 2, 4)
+        _unit("mm", 2, 5)
+        _lbl("Shot D min", 4, 3)
+        _ent(D_min_var, 4, 4)
+        _unit("mm", 4, 5)
+        _lbl("Shot D max", 5, 3)
+        _ent(D_max_var, 5, 4)
+        _unit("mm", 5, 5)
+        _lbl("Velocity min", 7, 3)
+        _ent(V_min_var, 7, 4)
+        _unit("m/s", 7, 5)
+        _lbl("Velocity max", 8, 3)
+        _ent(V_max_var, 8, 4)
+        _unit("m/s", 8, 5)
 
         # ---- Material selectors ----
         try:
             from materials import WORKPIECE_MATERIALS, SHOT_MATERIALS as _SM
+
             _wp_names = [""] + sorted(WORKPIECE_MATERIALS.keys())
             _sp_names = [""] + sorted(_SM.keys())
         except ImportError:
@@ -623,35 +643,41 @@ class App:
         wp_mat_var = tk.StringVar(value="")
         sp_mat_var = tk.StringVar(value="")
 
-        tk.Label(mat_frame, text="Workpiece", font=BODY_FONT, anchor="e").grid(
-            row=0, column=0, sticky="e", padx=(6, 4))
-        ttk.Combobox(mat_frame, textvariable=wp_mat_var, values=_wp_names,
-                     width=18, state="readonly").grid(row=0, column=1, sticky="w")
-        tk.Label(mat_frame, text="Shot", font=BODY_FONT, anchor="e").grid(
-            row=0, column=2, sticky="e", padx=(16, 4))
-        ttk.Combobox(mat_frame, textvariable=sp_mat_var, values=_sp_names,
-                     width=18, state="readonly").grid(row=0, column=3, sticky="w")
-        tk.Label(mat_frame, text="(logged to simulation_params.txt; enables material-conditioned training)",
-                 font=HINT_FONT, fg=HINT_COLOR).grid(row=1, column=0, columnspan=4, sticky="w", padx=4)
+        tk.Label(mat_frame, text="Workpiece", font=BODY_FONT, anchor="e").grid(row=0, column=0, sticky="e", padx=(6, 4))
+        ttk.Combobox(mat_frame, textvariable=wp_mat_var, values=_wp_names, width=18, state="readonly").grid(
+            row=0, column=1, sticky="w"
+        )
+        tk.Label(mat_frame, text="Shot", font=BODY_FONT, anchor="e").grid(row=0, column=2, sticky="e", padx=(16, 4))
+        ttk.Combobox(mat_frame, textvariable=sp_mat_var, values=_sp_names, width=18, state="readonly").grid(
+            row=0, column=3, sticky="w"
+        )
+        tk.Label(
+            mat_frame,
+            text="(logged to simulation_params.txt; enables material-conditioned training)",
+            font=HINT_FONT,
+            fg=HINT_COLOR,
+        ).grid(row=1, column=0, columnspan=4, sticky="w", padx=4)
 
         # ---- Buttons + progress ----
         btn_frame = tk.Frame(parent)
         btn_frame.grid(row=3, column=0, sticky="ew", pady=(0, 6))
 
         gen_btn = tk.Button(
-            btn_frame, text="Generate",
+            btn_frame,
+            text="Generate",
             font=("Arial", 11, "bold"),
-            bg="#6c3483", fg="white", relief="flat",
-            width=14, height=2,
+            bg="#6c3483",
+            fg="white",
+            relief="flat",
+            width=14,
+            height=2,
         )
         gen_btn.pack(side="left", padx=(0, 10))
 
         stop_btn = tk.Button(btn_frame, text="Stop", width=10, height=2, state="disabled")
         stop_btn.pack(side="left", padx=(0, 10))
 
-        progress = ttk.Progressbar(
-            btn_frame, orient=tk.HORIZONTAL, length=480, mode="indeterminate"
-        )
+        progress = ttk.Progressbar(btn_frame, orient=tk.HORIZONTAL, length=480, mode="indeterminate")
         progress.pack(side="left", fill="x", expand=True)
 
         # ---- Log ----
@@ -660,37 +686,51 @@ class App:
         log_frame.columnconfigure(0, weight=1)
         log_frame.rowconfigure(0, weight=1)
 
-        log = tk.Text(log_frame, height=10, font=("Courier", 9),
-                      state="disabled", bg="#f8f8f8")
+        log = tk.Text(log_frame, height=10, font=("Courier", 9), state="disabled", bg="#f8f8f8")
         log_sb = ttk.Scrollbar(log_frame, orient="vertical", command=log.yview)
         log.configure(yscrollcommand=log_sb.set)
         log.grid(row=0, column=0, sticky="nsew")
         log_sb.grid(row=0, column=1, sticky="ns")
 
         # ---- Wire up the generator ----
-        script = os.path.join(
-            os.path.dirname(__file__), "src", "peen-ml", "native_dataset_gen.py"
-        )
+        script = os.path.join(os.path.dirname(__file__), "src", "peen-ml", "native_dataset_gen.py")
 
         def _collect_args():
-            Lx = float(Lx_var.get()) / 1000.0   # mm -> m
+            Lx = float(Lx_var.get()) / 1000.0  # mm -> m
             Ly = float(Ly_var.get()) / 1000.0
             D_min = float(D_min_var.get()) / 1000.0
             D_max = float(D_max_var.get()) / 1000.0
             args = [
-                "--output",       out_var.get(),
-                "--n_sims",       n_sims_var.get(),
-                "--workers",      workers_var.get(),
-                "--seed",         seed_var.get(),
-                "--Lx", str(Lx), "--Ly", str(Ly),
-                "--Nx",           Nx_var.get(),
-                "--Ny",           Ny_var.get(),
-                "--grid_size",    grid_var.get(),
-                "--n_shots_min",  shots_min_var.get(),
-                "--n_shots_max",  shots_max_var.get(),
-                "--D_min", str(D_min), "--D_max", str(D_max),
-                "--V_min",        V_min_var.get(),
-                "--V_max",        V_max_var.get(),
+                "--output",
+                out_var.get(),
+                "--n_sims",
+                n_sims_var.get(),
+                "--workers",
+                workers_var.get(),
+                "--seed",
+                seed_var.get(),
+                "--Lx",
+                str(Lx),
+                "--Ly",
+                str(Ly),
+                "--Nx",
+                Nx_var.get(),
+                "--Ny",
+                Ny_var.get(),
+                "--grid_size",
+                grid_var.get(),
+                "--n_shots_min",
+                shots_min_var.get(),
+                "--n_shots_max",
+                shots_max_var.get(),
+                "--D_min",
+                str(D_min),
+                "--D_max",
+                str(D_max),
+                "--V_min",
+                V_min_var.get(),
+                "--V_max",
+                V_max_var.get(),
             ]
             if wp_mat_var.get():
                 args += ["--workpiece_material", wp_mat_var.get()]
@@ -699,8 +739,15 @@ class App:
             return args
 
         self._wire_generator(
-            dialog, script, _collect_args,
-            out_var, log, progress, gen_btn, stop_btn, _q,
+            dialog,
+            script,
+            _collect_args,
+            out_var,
+            log,
+            progress,
+            gen_btn,
+            stop_btn,
+            _q,
         )
 
     # ------------------------------------------------------------------
@@ -710,10 +757,7 @@ class App:
 
         # CUDA indicator
         cuda_ok = torch.cuda.is_available()
-        cuda_txt = (
-            f"GPU: {torch.cuda.get_device_name(0)}" if cuda_ok
-            else "No CUDA GPU detected — will run on CPU"
-        )
+        cuda_txt = f"GPU: {torch.cuda.get_device_name(0)}" if cuda_ok else "No CUDA GPU detected — will run on CPU"
         cuda_color = OK_COLOR if cuda_ok else ERR_COLOR
 
         tk.Label(
@@ -731,11 +775,16 @@ class App:
                 "Shots emerge from a nozzle at height h, with positions Gaussian-distributed "
                 "below it.  Exit velocities are also Gaussian.  GPU-accelerated CUDA kernel."
             ),
-            font=HINT_FONT, fg=HINT_COLOR, wraplength=780, justify="left",
+            font=HINT_FONT,
+            fg=HINT_COLOR,
+            wraplength=780,
+            justify="left",
         ).pack(side="left")
         tk.Label(
-            hdr2, text=f"  {cuda_txt}",
-            font=("Arial", 9, "bold"), fg=cuda_color,
+            hdr2,
+            text=f"  {cuda_txt}",
+            font=("Arial", 9, "bold"),
+            fg=cuda_color,
         ).pack(side="right", padx=(10, 0))
 
         # ---- Parameter grid ----
@@ -746,15 +795,14 @@ class App:
 
         def _lbl(text, row, col):
             tk.Label(pf, text=text, font=BODY_FONT, anchor="e").grid(
-                row=row, column=col, sticky="e", padx=(6, 4), pady=2)
+                row=row, column=col, sticky="e", padx=(6, 4), pady=2
+            )
 
         def _ent(var, row, col, width=9):
-            tk.Entry(pf, textvariable=var, width=width, font=BODY_FONT).grid(
-                row=row, column=col, sticky="w", pady=2)
+            tk.Entry(pf, textvariable=var, width=width, font=BODY_FONT).grid(row=row, column=col, sticky="w", pady=2)
 
         def _unit(text, row, col):
-            tk.Label(pf, text=text, font=HINT_FONT, fg=HINT_COLOR).grid(
-                row=row, column=col, sticky="w", padx=(2, 10))
+            tk.Label(pf, text=text, font=HINT_FONT, fg=HINT_COLOR).grid(row=row, column=col, sticky="w", padx=(2, 10))
 
         # Output folder
         out_var = tk.StringVar(value="./Dataset_Gaussian")
@@ -762,71 +810,105 @@ class App:
         out_ef = tk.Frame(pf)
         out_ef.grid(row=0, column=1, columnspan=6, sticky="ew", pady=2)
         out_ef.columnconfigure(0, weight=1)
-        tk.Entry(out_ef, textvariable=out_var, font=BODY_FONT).grid(
-            row=0, column=0, sticky="ew", padx=(0, 6))
-        tk.Button(out_ef, text="Browse...", width=9,
-                  command=lambda: self.browse_directory(out_var, parent=dialog)).grid(row=0, column=1)
+        tk.Entry(out_ef, textvariable=out_var, font=BODY_FONT).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        tk.Button(
+            out_ef, text="Browse...", width=9, command=lambda: self.browse_directory(out_var, parent=dialog)
+        ).grid(row=0, column=1)
 
         # Left column parameters
-        n_sims_var    = tk.StringVar(value="200")
-        workers_var   = tk.StringVar(value="1")
-        seed_var      = tk.StringVar(value="0")
-        Nx_var        = tk.StringVar(value="100")
-        Ny_var        = tk.StringVar(value="100")
-        grid_var      = tk.StringVar(value="20")
+        n_sims_var = tk.StringVar(value="200")
+        workers_var = tk.StringVar(value="1")
+        seed_var = tk.StringVar(value="0")
+        Nx_var = tk.StringVar(value="100")
+        Ny_var = tk.StringVar(value="100")
+        grid_var = tk.StringVar(value="20")
         shots_min_var = tk.StringVar(value="500")
         shots_max_var = tk.StringVar(value="2000")
-        h_min_var     = tk.StringVar(value="50")
-        h_max_var     = tk.StringVar(value="400")
+        h_min_var = tk.StringVar(value="50")
+        h_max_var = tk.StringVar(value="400")
 
-        _lbl("Simulations",    1, 0); _ent(n_sims_var,    1, 1)
-        _lbl("Workers",        2, 0); _ent(workers_var,   2, 1); _unit("(1=CUDA)", 2, 2)
-        _lbl("Seed",           3, 0); _ent(seed_var,      3, 1)
-        _lbl("Mesh Nx",        4, 0); _ent(Nx_var,        4, 1); _unit("elements", 4, 2)
-        _lbl("Mesh Ny",        5, 0); _ent(Ny_var,        5, 1); _unit("elements", 5, 2)
-        _lbl("Grid G",         6, 0); _ent(grid_var,      6, 1); _unit("G x G checkerboard", 6, 2)
-        _lbl("Shots min",      7, 0); _ent(shots_min_var, 7, 1)
-        _lbl("Shots max",      8, 0); _ent(shots_max_var, 8, 1)
-        _lbl("Nozzle h min",   9, 0); _ent(h_min_var,    9, 1); _unit("mm standoff", 9, 2)
-        _lbl("Nozzle h max",  10, 0); _ent(h_max_var,   10, 1); _unit("mm standoff", 10, 2)
+        _lbl("Simulations", 1, 0)
+        _ent(n_sims_var, 1, 1)
+        _lbl("Workers", 2, 0)
+        _ent(workers_var, 2, 1)
+        _unit("(1=CUDA)", 2, 2)
+        _lbl("Seed", 3, 0)
+        _ent(seed_var, 3, 1)
+        _lbl("Mesh Nx", 4, 0)
+        _ent(Nx_var, 4, 1)
+        _unit("elements", 4, 2)
+        _lbl("Mesh Ny", 5, 0)
+        _ent(Ny_var, 5, 1)
+        _unit("elements", 5, 2)
+        _lbl("Grid G", 6, 0)
+        _ent(grid_var, 6, 1)
+        _unit("G x G checkerboard", 6, 2)
+        _lbl("Shots min", 7, 0)
+        _ent(shots_min_var, 7, 1)
+        _lbl("Shots max", 8, 0)
+        _ent(shots_max_var, 8, 1)
+        _lbl("Nozzle h min", 9, 0)
+        _ent(h_min_var, 9, 1)
+        _unit("mm standoff", 9, 2)
+        _lbl("Nozzle h max", 10, 0)
+        _ent(h_max_var, 10, 1)
+        _unit("mm standoff", 10, 2)
 
         # Right column parameters
-        Lx_var      = tk.StringVar(value="1000")
-        Ly_var      = tk.StringVar(value="1000")
-        D_min_var   = tk.StringVar(value="4.0")
-        D_max_var   = tk.StringVar(value="10.0")
-        V_min_var   = tk.StringVar(value="25")
-        V_max_var   = tk.StringVar(value="80")
+        Lx_var = tk.StringVar(value="1000")
+        Ly_var = tk.StringVar(value="1000")
+        D_min_var = tk.StringVar(value="4.0")
+        D_max_var = tk.StringVar(value="10.0")
+        V_min_var = tk.StringVar(value="25")
+        V_max_var = tk.StringVar(value="80")
         div_min_var = tk.StringVar(value="5")
         div_max_var = tk.StringVar(value="30")
 
-        _lbl("Plate Lx",       1, 3); _ent(Lx_var,      1, 4); _unit("mm", 1, 5)
-        _lbl("Plate Ly",       2, 3); _ent(Ly_var,      2, 4); _unit("mm", 2, 5)
-        _lbl("Shot D min",     4, 3); _ent(D_min_var,   4, 4); _unit("mm", 4, 5)
-        _lbl("Shot D max",     5, 3); _ent(D_max_var,   5, 4); _unit("mm", 5, 5)
-        _lbl("Velocity min",   7, 3); _ent(V_min_var,   7, 4); _unit("m/s", 7, 5)
-        _lbl("Velocity max",   8, 3); _ent(V_max_var,   8, 4); _unit("m/s", 8, 5)
-        _lbl("Div angle min",  9, 3); _ent(div_min_var, 9, 4); _unit("deg", 9, 5)
-        _lbl("Div angle max", 10, 3); _ent(div_max_var,10, 4); _unit("deg", 10, 5)
+        _lbl("Plate Lx", 1, 3)
+        _ent(Lx_var, 1, 4)
+        _unit("mm", 1, 5)
+        _lbl("Plate Ly", 2, 3)
+        _ent(Ly_var, 2, 4)
+        _unit("mm", 2, 5)
+        _lbl("Shot D min", 4, 3)
+        _ent(D_min_var, 4, 4)
+        _unit("mm", 4, 5)
+        _lbl("Shot D max", 5, 3)
+        _ent(D_max_var, 5, 4)
+        _unit("mm", 5, 5)
+        _lbl("Velocity min", 7, 3)
+        _ent(V_min_var, 7, 4)
+        _unit("m/s", 7, 5)
+        _lbl("Velocity max", 8, 3)
+        _ent(V_max_var, 8, 4)
+        _unit("m/s", 8, 5)
+        _lbl("Div angle min", 9, 3)
+        _ent(div_min_var, 9, 4)
+        _unit("deg", 9, 5)
+        _lbl("Div angle max", 10, 3)
+        _ent(div_max_var, 10, 4)
+        _unit("deg", 10, 5)
 
         # ---- Buttons + progress ----
         btn_frame = tk.Frame(parent)
         btn_frame.grid(row=3, column=0, sticky="ew", pady=(0, 6))
 
         gen_btn = tk.Button(
-            btn_frame, text="Generate",
+            btn_frame,
+            text="Generate",
             font=("Arial", 11, "bold"),
-            bg="#6c3483", fg="white", relief="flat",
-            width=14, height=2,
+            bg="#6c3483",
+            fg="white",
+            relief="flat",
+            width=14,
+            height=2,
         )
         gen_btn.pack(side="left", padx=(0, 10))
 
         stop_btn = tk.Button(btn_frame, text="Stop", width=10, height=2, state="disabled")
         stop_btn.pack(side="left", padx=(0, 10))
 
-        progress = ttk.Progressbar(
-            btn_frame, orient=tk.HORIZONTAL, length=480, mode="indeterminate"
-        )
+        progress = ttk.Progressbar(btn_frame, orient=tk.HORIZONTAL, length=480, mode="indeterminate")
         progress.pack(side="left", fill="x", expand=True)
 
         # ---- Log ----
@@ -835,54 +917,78 @@ class App:
         log_frame.columnconfigure(0, weight=1)
         log_frame.rowconfigure(0, weight=1)
 
-        log = tk.Text(log_frame, height=10, font=("Courier", 9),
-                      state="disabled", bg="#f8f8f8")
+        log = tk.Text(log_frame, height=10, font=("Courier", 9), state="disabled", bg="#f8f8f8")
         log_sb = ttk.Scrollbar(log_frame, orient="vertical", command=log.yview)
         log.configure(yscrollcommand=log_sb.set)
         log.grid(row=0, column=0, sticky="nsew")
         log_sb.grid(row=0, column=1, sticky="ns")
 
         # ---- Wire up the generator ----
-        script = os.path.join(
-            os.path.dirname(__file__), "src", "peen-ml",
-            "gaussian_nozzle_dataset_gen.py"
-        )
+        script = os.path.join(os.path.dirname(__file__), "src", "peen-ml", "gaussian_nozzle_dataset_gen.py")
 
         def _collect_args():
-            Lx = float(Lx_var.get()) / 1000.0       # mm -> m
+            Lx = float(Lx_var.get()) / 1000.0  # mm -> m
             Ly = float(Ly_var.get()) / 1000.0
             D_min = float(D_min_var.get()) / 1000.0
             D_max = float(D_max_var.get()) / 1000.0
             h_min = float(h_min_var.get()) / 1000.0
             h_max = float(h_max_var.get()) / 1000.0
             return [
-                "--output",       out_var.get(),
-                "--n_sims",       n_sims_var.get(),
-                "--workers",      workers_var.get(),
-                "--seed",         seed_var.get(),
-                "--Lx", str(Lx), "--Ly", str(Ly),
-                "--Nx",           Nx_var.get(),
-                "--Ny",           Ny_var.get(),
-                "--grid_size",    grid_var.get(),
-                "--n_shots_min",  shots_min_var.get(),
-                "--n_shots_max",  shots_max_var.get(),
-                "--D_min", str(D_min), "--D_max", str(D_max),
-                "--V_min",        V_min_var.get(),
-                "--V_max",        V_max_var.get(),
-                "--h_min", str(h_min), "--h_max", str(h_max),
-                "--div_min_deg",  div_min_var.get(),
-                "--div_max_deg",  div_max_var.get(),
+                "--output",
+                out_var.get(),
+                "--n_sims",
+                n_sims_var.get(),
+                "--workers",
+                workers_var.get(),
+                "--seed",
+                seed_var.get(),
+                "--Lx",
+                str(Lx),
+                "--Ly",
+                str(Ly),
+                "--Nx",
+                Nx_var.get(),
+                "--Ny",
+                Ny_var.get(),
+                "--grid_size",
+                grid_var.get(),
+                "--n_shots_min",
+                shots_min_var.get(),
+                "--n_shots_max",
+                shots_max_var.get(),
+                "--D_min",
+                str(D_min),
+                "--D_max",
+                str(D_max),
+                "--V_min",
+                V_min_var.get(),
+                "--V_max",
+                V_max_var.get(),
+                "--h_min",
+                str(h_min),
+                "--h_max",
+                str(h_max),
+                "--div_min_deg",
+                div_min_var.get(),
+                "--div_max_deg",
+                div_max_var.get(),
             ]
 
         self._wire_generator(
-            dialog, script, _collect_args,
-            out_var, log, progress, gen_btn, stop_btn, _q,
+            dialog,
+            script,
+            _collect_args,
+            out_var,
+            log,
+            progress,
+            gen_btn,
+            stop_btn,
+            _q,
         )
 
     # ------------------------------------------------------------------
 
-    def _wire_generator(self, dialog, script, collect_args_fn,
-                        out_var, log, progress, gen_btn, stop_btn, _q):
+    def _wire_generator(self, dialog, script, collect_args_fn, out_var, log, progress, gen_btn, stop_btn, _q):
         """
         Attach Generate / Stop behaviour to a generator tab.
 
@@ -905,9 +1011,9 @@ class App:
             stop_btn     : The Stop button (enabled while running).
             _q           : The ``queue`` module (passed in to avoid re-import).
         """
-        log_q    = _q.Queue()
+        log_q = _q.Queue()
         proc_ref = [None]
-        running  = [False]
+        running = [False]
 
         def _log_write(msg):
             log.config(state="normal")
@@ -968,13 +1074,9 @@ class App:
                         log_q.put(line.rstrip())
                     proc.wait()
                     if proc.returncode == 0:
-                        log_q.put(
-                            f"\n[Done -- output written to: {out_var.get()}]"
-                        )
+                        log_q.put(f"\n[Done -- output written to: {out_var.get()}]")
                     else:
-                        log_q.put(
-                            f"\n[Process exited with code {proc.returncode}]"
-                        )
+                        log_q.put(f"\n[Process exited with code {proc.returncode}]")
                 except Exception as exc:  # pylint: disable=broad-except
                     log_q.put(f"ERROR: {exc}")
                 finally:
@@ -1046,21 +1148,20 @@ class App:
         ).grid(row=0, column=0, sticky="w", pady=(4, 2))
         tk.Label(
             outer,
-            text=(
-                "Follow the four steps below.  Hover over '? Help' in any section "
-                "for detailed instructions."
-            ),
-            font=HINT_FONT, fg=HINT_COLOR, justify="left", wraplength=880,
+            text=("Follow the four steps below.  Hover over '? Help' in any section " "for detailed instructions."),
+            font=HINT_FONT,
+            fg=HINT_COLOR,
+            justify="left",
+            wraplength=880,
         ).grid(row=1, column=0, sticky="w", pady=(0, 6))
-        ttk.Separator(outer, orient="horizontal").grid(
-            row=2, column=0, sticky="ew", pady=(0, 8)
-        )
+        ttk.Separator(outer, orient="horizontal").grid(row=2, column=0, sticky="ew", pady=(0, 8))
 
         # ======================================================
         # STEP 1 — Select training data
         # ======================================================
         sec1 = _section(
-            outer, row=3,
+            outer,
+            row=3,
             title="Step 1  —  Select Training Data Folder",
             tooltip=(
                 "Browse to the PARENT folder that contains your Simulation_0/,\n"
@@ -1090,7 +1191,8 @@ class App:
             row=0, column=0, sticky="ew", padx=(0, 6)
         )
         tk.Button(
-            entry_frame1, text="Browse...",
+            entry_frame1,
+            text="Browse...",
             command=lambda: self.browse_directory(data_folder_var, parent=dialog),
             width=10,
         ).grid(row=0, column=1)
@@ -1102,7 +1204,8 @@ class App:
         # STEP 2 — Verify detected shapes
         # ======================================================
         sec2 = _section(
-            outer, row=4,
+            outer,
+            row=4,
             title="Step 2  —  Verify Detected Dataset Shape",
             tooltip=(
                 "After browsing, the app reads the first Simulation_N/ folder and\n"
@@ -1118,9 +1221,7 @@ class App:
 
         # shape_var is updated automatically whenever data_folder_var changes.
         shape_var = tk.StringVar(value="(waiting — browse a folder in Step 1 first)")
-        shape_lbl = tk.Label(
-            sec2, textvariable=shape_var, font=HINT_FONT, fg=INFO_COLOR, justify="left"
-        )
+        shape_lbl = tk.Label(sec2, textvariable=shape_var, font=HINT_FONT, fg=INFO_COLOR, justify="left")
         shape_lbl.grid(row=1, column=0, columnspan=3, sticky="w", padx=6, pady=(4, 6))
 
         def _update_shape(*_):
@@ -1134,16 +1235,19 @@ class App:
             """
             folder = data_folder_var.get()
             if not folder or not os.path.isdir(folder):
-                return   # Nothing to inspect yet — wait for a valid path
+                return  # Nothing to inspect yet — wait for a valid path
             try:
                 n_nodes, cb_size = infer_dataset_shape(folder)
                 # Count matching sub-folders to report how many training cases exist
-                n_sims = len([
-                    d for d in os.listdir(folder)
-                    if os.path.isdir(os.path.join(folder, d))
-                    and d.startswith("Simulation_")
-                    and d[len("Simulation_"):].isdigit()
-                ])
+                n_sims = len(
+                    [
+                        d
+                        for d in os.listdir(folder)
+                        if os.path.isdir(os.path.join(folder, d))
+                        and d.startswith("Simulation_")
+                        and d[len("Simulation_") :].isdigit()
+                    ]
+                )
                 shape_var.set(
                     f"OK  |  {n_sims} simulation(s)   "
                     f"num_nodes={n_nodes}   "
@@ -1162,7 +1266,8 @@ class App:
         # STEP 2b — Choose Architecture
         # ======================================================
         sec_arch = _section(
-            outer, row=5,
+            outer,
+            row=5,
             title="Step 2b  —  Choose Model Architecture",
             tooltip=(
                 "FC (Legacy): original model, Linear(512, N×3) output.  OOM at N > 100K.\n\n"
@@ -1175,12 +1280,15 @@ class App:
         )
         model_type_var = tk.StringVar(value="conv")
         for _val, _lbl in [
-            ("fc",    "FC — Legacy  (OOM at N > 100K)"),
-            ("conv",  "Convolutional Decoder  [recommended]"),
+            ("fc", "FC — Legacy  (OOM at N > 100K)"),
+            ("conv", "Convolutional Decoder  [recommended]"),
             ("siren", "SIREN / INR  [large meshes, memory-safe]"),
         ]:
             tk.Radiobutton(
-                sec_arch, text=_lbl, variable=model_type_var, value=_val,
+                sec_arch,
+                text=_lbl,
+                variable=model_type_var,
+                value=_val,
                 font=HINT_FONT,
             ).grid(sticky="w", padx=12, pady=2)
 
@@ -1188,7 +1296,8 @@ class App:
         # STEP 3 — Train
         # ======================================================
         sec3 = _section(
-            outer, row=6,
+            outer,
+            row=6,
             title="Step 3  —  Train the Model",
             tooltip=(
                 "Click 'Train' to start.  Training runs in the background so the\n"
@@ -1208,23 +1317,30 @@ class App:
         # Create the Train button first without a command; we assign it below
         # once _do_train is defined (it needs to close over train_btn itself).
         train_btn = tk.Button(
-            btn_row, text="Train",
+            btn_row,
+            text="Train",
             font=("Arial", 11, "bold"),
-            bg="#2471a3", fg="white", relief="flat",
-            width=14, height=2,
+            bg="#2471a3",
+            fg="white",
+            relief="flat",
+            width=14,
+            height=2,
         )
         train_btn.pack(side="left", padx=(0, 16))
 
         tk.Button(
-            btn_row, text="Back to Main Menu",
-            command=dialog.destroy, width=18,
+            btn_row,
+            text="Back to Main Menu",
+            command=dialog.destroy,
+            width=18,
         ).pack(side="left")
 
         # ======================================================
         # STEP 4 — Monitor progress
         # ======================================================
         sec4 = _section(
-            outer, row=7,
+            outer,
+            row=7,
             title="Step 4  —  Monitor Training Progress",
             tooltip=(
                 "The log below updates as each epoch completes, showing:\n"
@@ -1240,9 +1356,7 @@ class App:
         )
 
         # Indeterminate progress bar: pulses left/right during training.
-        progress = ttk.Progressbar(
-            sec4, orient=tk.HORIZONTAL, length=700, mode='indeterminate'
-        )
+        progress = ttk.Progressbar(sec4, orient=tk.HORIZONTAL, length=700, mode="indeterminate")
         progress.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(4, 6))
 
         # Scrollable log Text widget — read-only for the user.
@@ -1250,8 +1364,7 @@ class App:
         log_frame.grid(row=2, column=0, columnspan=3, sticky="ew")
         log_frame.columnconfigure(0, weight=1)
 
-        log = tk.Text(log_frame, height=12, font=("Courier", 9), state='disabled',
-                      bg="#f8f8f8")
+        log = tk.Text(log_frame, height=12, font=("Courier", 9), state="disabled", bg="#f8f8f8")
         log_scroll = ttk.Scrollbar(log_frame, orient="vertical", command=log.yview)
         log.configure(yscrollcommand=log_scroll.set)
         log.grid(row=0, column=0, sticky="ew")
@@ -1263,7 +1376,8 @@ class App:
         plot_lbl = tk.Label(
             plot_lf,
             text="(Loss curve will appear here after training completes.)",
-            font=HINT_FONT, fg=HINT_COLOR,
+            font=HINT_FONT,
+            fg=HINT_COLOR,
         )
         plot_lbl.pack(pady=8)
 
@@ -1290,10 +1404,10 @@ class App:
                 msg (str): Line to append.
                 color (str): Reserved for future coloured log lines.
             """
-            log.config(state='normal')
+            log.config(state="normal")
             log.insert(tk.END, msg + "\n")
-            log.see(tk.END)       # Auto-scroll to the latest line
-            log.config(state='disabled')
+            log.see(tk.END)  # Auto-scroll to the latest line
+            log.config(state="disabled")
 
         def _do_train():
             """
@@ -1311,14 +1425,13 @@ class App:
             folder = data_folder_var.get()
             if not folder or not os.path.isdir(folder):
                 messagebox.showerror(
-                    "No folder selected",
-                    "Please browse to your training data folder in Step 1 first."
+                    "No folder selected", "Please browse to your training data folder in Step 1 first."
                 )
                 return
 
             # Start animating before the thread starts so the UI feels immediate.
             progress.start(15)
-            train_btn.config(state='disabled', text="Training...")
+            train_btn.config(state="disabled", text="Training...")
             _log_write(f"Starting training on: {folder}")
             _log_write("(This may take several minutes depending on dataset size.)")
 
@@ -1335,15 +1448,15 @@ class App:
                     if arch == "fc":
                         train_save_gui(folder)
                         save_subdir = "saved_model"
-                        model_file  = "trained_displacement_predictor_full_model.pth"
+                        model_file = "trained_displacement_predictor_full_model.pth"
                     elif arch == "conv":
                         train_save_conv_gui(folder)
                         save_subdir = "saved_model_conv"
-                        model_file  = "trained_conv_decoder_full_model.pth"
+                        model_file = "trained_conv_decoder_full_model.pth"
                     else:  # siren
                         train_save_siren_gui(folder)
                         save_subdir = "saved_model_siren"
-                        model_file  = "trained_siren_full_model.pth"
+                        model_file = "trained_siren_full_model.pth"
 
                     save_path = os.path.join(folder, save_subdir, model_file)
                     _log_write("\nTraining complete!")
@@ -1358,7 +1471,7 @@ class App:
                 finally:
                     # Always clean up the UI regardless of success or failure.
                     progress.stop()
-                    train_btn.config(state='normal', text="Train")
+                    train_btn.config(state="normal", text="Train")
 
             # daemon=True so the thread is killed automatically if the window is closed.
             threading.Thread(target=_run, daemon=True).start()
@@ -1427,17 +1540,19 @@ class App:
                 "Use a trained model to instantly predict surface deformation from a "
                 "shot peening recipe.  Hover '? Help' for details on each step."
             ),
-            font=HINT_FONT, fg=HINT_COLOR, justify="left", wraplength=880,
+            font=HINT_FONT,
+            fg=HINT_COLOR,
+            justify="left",
+            wraplength=880,
         ).grid(row=1, column=0, sticky="w", pady=(0, 6))
-        ttk.Separator(outer, orient="horizontal").grid(
-            row=2, column=0, sticky="ew", pady=(0, 8)
-        )
+        ttk.Separator(outer, orient="horizontal").grid(row=2, column=0, sticky="ew", pady=(0, 8))
 
         # ======================================================
         # STEP 1 — Select the trained model file
         # ======================================================
         sec1 = _section(
-            outer, row=3,
+            outer,
+            row=3,
             title="Step 1  —  Select the Trained Model File",
             tooltip=(
                 "Browse to the PyTorch model file (.pth) saved during training.\n\n"
@@ -1449,20 +1564,17 @@ class App:
             ),
         )
 
-        tk.Label(sec1, text="Model File  (.pth)", font=BODY_FONT).grid(
-            row=1, column=0, sticky="w", pady=(4, 2)
-        )
+        tk.Label(sec1, text="Model File  (.pth)", font=BODY_FONT).grid(row=1, column=0, sticky="w", pady=(4, 2))
 
         # StringVar stores the .pth file path chosen by the user.
         model_file_var = tk.StringVar()
         ef1 = tk.Frame(sec1)
         ef1.grid(row=2, column=0, columnspan=3, sticky="ew", pady=4)
         ef1.columnconfigure(0, weight=1)
-        tk.Entry(ef1, textvariable=model_file_var, font=BODY_FONT).grid(
-            row=0, column=0, sticky="ew", padx=(0, 6)
-        )
+        tk.Entry(ef1, textvariable=model_file_var, font=BODY_FONT).grid(row=0, column=0, sticky="ew", padx=(0, 6))
         tk.Button(
-            ef1, text="Browse...",
+            ef1,
+            text="Browse...",
             command=lambda: self.browse_file(model_file_var, parent=dialog),
             width=10,
         ).grid(row=0, column=1)
@@ -1471,7 +1583,8 @@ class App:
         # STEP 2 — Select the peen intensity folder to evaluate
         # ======================================================
         sec2 = _section(
-            outer, row=4,
+            outer,
+            row=4,
             title="Step 2  —  Select Peen Intensity to Evaluate",
             tooltip=(
                 "Browse to the simulation folder that contains the shot peening\n"
@@ -1490,9 +1603,7 @@ class App:
             ),
         )
 
-        tk.Label(sec2, text="Peen Intensity Folder", font=BODY_FONT).grid(
-            row=1, column=0, sticky="w", pady=(4, 2)
-        )
+        tk.Label(sec2, text="Peen Intensity Folder", font=BODY_FONT).grid(row=1, column=0, sticky="w", pady=(4, 2))
 
         checkerboard_folder_var = tk.StringVar()
         ef2 = tk.Frame(sec2)
@@ -1502,7 +1613,8 @@ class App:
             row=0, column=0, sticky="ew", padx=(0, 6)
         )
         tk.Button(
-            ef2, text="Browse...",
+            ef2,
+            text="Browse...",
             command=lambda: self.browse_directory(checkerboard_folder_var, parent=dialog),
             width=10,
         ).grid(row=0, column=1)
@@ -1519,14 +1631,16 @@ class App:
         tk.Label(
             preview_row,
             text="  Opens a colour-map of checkerboard.npy",
-            font=HINT_FONT, fg=HINT_COLOR,
+            font=HINT_FONT,
+            fg=HINT_COLOR,
         ).pack(side="left")
 
         # ======================================================
         # STEP 3 — Set the output path
         # ======================================================
         sec3 = _section(
-            outer, row=5,
+            outer,
+            row=5,
             title="Step 3  —  Set Output Path for Predictions",
             tooltip=(
                 "Choose the folder where predicted displacement files will be written.\n\n"
@@ -1539,19 +1653,16 @@ class App:
             ),
         )
 
-        tk.Label(sec3, text="Output Path (folder)", font=BODY_FONT).grid(
-            row=1, column=0, sticky="w", pady=(4, 2)
-        )
+        tk.Label(sec3, text="Output Path (folder)", font=BODY_FONT).grid(row=1, column=0, sticky="w", pady=(4, 2))
 
         output_path_var = tk.StringVar()
         ef3 = tk.Frame(sec3)
         ef3.grid(row=2, column=0, columnspan=3, sticky="ew", pady=4)
         ef3.columnconfigure(0, weight=1)
-        tk.Entry(ef3, textvariable=output_path_var, font=BODY_FONT).grid(
-            row=0, column=0, sticky="ew", padx=(0, 6)
-        )
+        tk.Entry(ef3, textvariable=output_path_var, font=BODY_FONT).grid(row=0, column=0, sticky="ew", padx=(0, 6))
         tk.Button(
-            ef3, text="Browse...",
+            ef3,
+            text="Browse...",
             command=lambda: self.browse_directory(output_path_var, parent=dialog),
             width=10,
         ).grid(row=0, column=1)
@@ -1560,7 +1671,8 @@ class App:
         # OPTIONAL — Material Selection (inference conditioning)
         # ======================================================
         sec_mat = _section(
-            outer, row=6,
+            outer,
+            row=6,
             title="Optional  —  Material Properties for Inference",
             tooltip=(
                 "Select the workpiece and shot materials used during shot peening.\n\n"
@@ -1576,6 +1688,7 @@ class App:
         try:
             from materials import WORKPIECE_MATERIALS as _WPM, SHOT_MATERIALS as _SPM
             from model import normalize_mat_features, MAT_FEATURE_KEYS
+
             _infer_wp_names = [""] + sorted(_WPM.keys())
             _infer_sp_names = [""] + sorted(_SPM.keys())
         except ImportError:
@@ -1591,16 +1704,19 @@ class App:
         mat_row.grid(row=1, column=0, columnspan=3, sticky="w", pady=(4, 2))
 
         tk.Label(mat_row, text="Workpiece:", font=BODY_FONT, anchor="e").pack(side="left", padx=(6, 4))
-        ttk.Combobox(mat_row, textvariable=infer_wp_var, values=_infer_wp_names,
-                     width=18, state="readonly").pack(side="left")
+        ttk.Combobox(mat_row, textvariable=infer_wp_var, values=_infer_wp_names, width=18, state="readonly").pack(
+            side="left"
+        )
         tk.Label(mat_row, text="  Shot:", font=BODY_FONT, anchor="e").pack(side="left", padx=(16, 4))
-        ttk.Combobox(mat_row, textvariable=infer_sp_var, values=_infer_sp_names,
-                     width=18, state="readonly").pack(side="left")
+        ttk.Combobox(mat_row, textvariable=infer_sp_var, values=_infer_sp_names, width=18, state="readonly").pack(
+            side="left"
+        )
 
         tk.Label(
             sec_mat,
             text="(only used by material-conditioned models; ignored otherwise)",
-            font=HINT_FONT, fg=HINT_COLOR,
+            font=HINT_FONT,
+            fg=HINT_COLOR,
         ).grid(row=2, column=0, columnspan=3, sticky="w", padx=6, pady=(0, 4))
 
         def _build_mat_features():
@@ -1613,14 +1729,23 @@ class App:
                 import numpy as _np
                 from materials import get_workpiece, get_shot
                 from model import normalize_mat_features as _norm, MAT_FEATURE_KEYS as _KEYS
-                wp = get_workpiece(wp_name) if wp_name else {
-                    "E": 113.8e9, "nu": 0.342, "sigma_yield": 880e6, "c": 3.0e9}
-                sp = get_shot(sp_name) if sp_name else {
-                    "rho_s": 7800.0, "E_s": 210e9, "nu_s": 0.30}
-                raw = _np.array([
-                    wp["E"], wp["nu"], wp["sigma_yield"], wp["c"],
-                    sp["E_s"], sp["nu_s"], sp["rho_s"],
-                ], dtype=_np.float32)
+
+                wp = (
+                    get_workpiece(wp_name) if wp_name else {"E": 113.8e9, "nu": 0.342, "sigma_yield": 880e6, "c": 3.0e9}
+                )
+                sp = get_shot(sp_name) if sp_name else {"rho_s": 7800.0, "E_s": 210e9, "nu_s": 0.30}
+                raw = _np.array(
+                    [
+                        wp["E"],
+                        wp["nu"],
+                        wp["sigma_yield"],
+                        wp["c"],
+                        sp["E_s"],
+                        sp["nu_s"],
+                        sp["rho_s"],
+                    ],
+                    dtype=_np.float32,
+                )
                 return _norm(raw)
             except Exception as _e:
                 print(f"[Material] Could not build feature vector: {_e}")
@@ -1630,7 +1755,8 @@ class App:
         # OPTIONAL — Curved Surface + Nozzle Trajectory
         # ======================================================
         sec_curved = _section(
-            outer, row=7,
+            outer,
+            row=7,
             title="Optional  —  Curved Surface & Nozzle Trajectory",
             tooltip=(
                 "Supply an STL file to predict deformation on a 3D curved surface\n"
@@ -1654,11 +1780,10 @@ class App:
         ef_stl = tk.Frame(sec_curved)
         ef_stl.grid(row=2, column=0, columnspan=3, sticky="ew", pady=4)
         ef_stl.columnconfigure(0, weight=1)
-        tk.Entry(ef_stl, textvariable=stl_file_var, font=BODY_FONT).grid(
-            row=0, column=0, sticky="ew", padx=(0, 6)
-        )
+        tk.Entry(ef_stl, textvariable=stl_file_var, font=BODY_FONT).grid(row=0, column=0, sticky="ew", padx=(0, 6))
         tk.Button(
-            ef_stl, text="Browse...",
+            ef_stl,
+            text="Browse...",
             command=lambda: self.browse_file(stl_file_var, parent=dialog),
             width=10,
         ).grid(row=0, column=1)
@@ -1669,66 +1794,74 @@ class App:
         )
 
         traj_mode_var = tk.StringVar(value="none")
-        mode_frame    = tk.Frame(sec_curved)
+        mode_frame = tk.Frame(sec_curved)
         mode_frame.grid(row=4, column=0, columnspan=3, sticky="w", pady=(0, 4))
 
-        tk.Radiobutton(mode_frame, text="None (static nozzle)",
-                       variable=traj_mode_var, value="none",
-                       font=BODY_FONT).pack(side="left", padx=(0, 12))
-        tk.Radiobutton(mode_frame, text="Parametric scan",
-                       variable=traj_mode_var, value="parametric",
-                       font=BODY_FONT).pack(side="left", padx=(0, 12))
-        tk.Radiobutton(mode_frame, text="Waypoint file",
-                       variable=traj_mode_var, value="file",
-                       font=BODY_FONT).pack(side="left")
+        tk.Radiobutton(
+            mode_frame, text="None (static nozzle)", variable=traj_mode_var, value="none", font=BODY_FONT
+        ).pack(side="left", padx=(0, 12))
+        tk.Radiobutton(
+            mode_frame, text="Parametric scan", variable=traj_mode_var, value="parametric", font=BODY_FONT
+        ).pack(side="left", padx=(0, 12))
+        tk.Radiobutton(mode_frame, text="Waypoint file", variable=traj_mode_var, value="file", font=BODY_FONT).pack(
+            side="left"
+        )
 
         # Parametric scan parameters
         param_frame = tk.Frame(sec_curved)
         param_frame.grid(row=5, column=0, columnspan=3, sticky="ew", pady=4)
         param_frame.columnconfigure(1, weight=0)
 
-        _scan_pattern_var  = tk.StringVar(value="raster")
-        _scan_speed_var    = tk.StringVar(value="0.05")
-        _line_spacing_var  = tk.StringVar(value="0.005")
-        _z_standoff_var    = tk.StringVar(value="0.15")
-        _shots_step_var    = tk.StringVar(value="10")
-        _cb_size_var       = tk.StringVar(value="20")
+        _scan_pattern_var = tk.StringVar(value="raster")
+        _scan_speed_var = tk.StringVar(value="0.05")
+        _line_spacing_var = tk.StringVar(value="0.005")
+        _z_standoff_var = tk.StringVar(value="0.15")
+        _shots_step_var = tk.StringVar(value="10")
+        _cb_size_var = tk.StringVar(value="20")
 
         def _prow(label, var, row, hint=""):
-            tk.Label(param_frame, text=label, font=HINT_FONT, fg=HINT_COLOR,
-                     anchor="w").grid(row=row, column=0, sticky="w", padx=(8, 4), pady=1)
-            tk.Entry(param_frame, textvariable=var, width=10,
-                     font=BODY_FONT).grid(row=row, column=1, sticky="w", pady=1)
+            tk.Label(param_frame, text=label, font=HINT_FONT, fg=HINT_COLOR, anchor="w").grid(
+                row=row, column=0, sticky="w", padx=(8, 4), pady=1
+            )
+            tk.Entry(param_frame, textvariable=var, width=10, font=BODY_FONT).grid(
+                row=row, column=1, sticky="w", pady=1
+            )
             if hint:
-                tk.Label(param_frame, text=hint, font=HINT_FONT,
-                         fg=HINT_COLOR).grid(row=row, column=2, sticky="w", padx=4)
+                tk.Label(param_frame, text=hint, font=HINT_FONT, fg=HINT_COLOR).grid(
+                    row=row, column=2, sticky="w", padx=4
+                )
 
-        tk.Label(param_frame, text="Scan pattern:", font=HINT_FONT,
-                 fg=HINT_COLOR).grid(row=0, column=0, sticky="w", padx=(8, 4), pady=1)
-        ttk.Combobox(param_frame, textvariable=_scan_pattern_var,
-                     values=["raster", "spiral", "zigzag"],
-                     state="readonly", width=10).grid(row=0, column=1, sticky="w", pady=1)
-        _prow("Scan speed (m/s):",     _scan_speed_var,   1)
-        _prow("Line spacing (m):",     _line_spacing_var, 2)
-        _prow("Z standoff (m):",       _z_standoff_var,   3)
-        _prow("Shots per step:",       _shots_step_var,   4)
-        _prow("Checkerboard size G:",  _cb_size_var,      5)
+        tk.Label(param_frame, text="Scan pattern:", font=HINT_FONT, fg=HINT_COLOR).grid(
+            row=0, column=0, sticky="w", padx=(8, 4), pady=1
+        )
+        ttk.Combobox(
+            param_frame,
+            textvariable=_scan_pattern_var,
+            values=["raster", "spiral", "zigzag"],
+            state="readonly",
+            width=10,
+        ).grid(row=0, column=1, sticky="w", pady=1)
+        _prow("Scan speed (m/s):", _scan_speed_var, 1)
+        _prow("Line spacing (m):", _line_spacing_var, 2)
+        _prow("Z standoff (m):", _z_standoff_var, 3)
+        _prow("Shots per step:", _shots_step_var, 4)
+        _prow("Checkerboard size G:", _cb_size_var, 5)
 
         # Waypoint file picker
         waypoint_frame = tk.Frame(sec_curved)
         waypoint_frame.grid(row=6, column=0, columnspan=3, sticky="ew", pady=4)
         waypoint_frame.columnconfigure(0, weight=1)
-        tk.Label(waypoint_frame, text="Waypoint file (.csv or .npy):",
-                 font=HINT_FONT, fg=HINT_COLOR).grid(row=0, column=0, sticky="w", padx=(8, 4))
+        tk.Label(waypoint_frame, text="Waypoint file (.csv or .npy):", font=HINT_FONT, fg=HINT_COLOR).grid(
+            row=0, column=0, sticky="w", padx=(8, 4)
+        )
         waypoint_file_var = tk.StringVar()
         ef_wp = tk.Frame(waypoint_frame)
         ef_wp.grid(row=1, column=0, columnspan=2, sticky="ew", padx=8)
         ef_wp.columnconfigure(0, weight=1)
-        tk.Entry(ef_wp, textvariable=waypoint_file_var, font=BODY_FONT).grid(
-            row=0, column=0, sticky="ew", padx=(0, 6)
-        )
+        tk.Entry(ef_wp, textvariable=waypoint_file_var, font=BODY_FONT).grid(row=0, column=0, sticky="ew", padx=(0, 6))
         tk.Button(
-            ef_wp, text="Browse...",
+            ef_wp,
+            text="Browse...",
             command=lambda: self.browse_file(waypoint_file_var, parent=dialog),
             width=10,
         ).grid(row=0, column=1)
@@ -1737,7 +1870,8 @@ class App:
         # STEP 4 — Run evaluation and visualise results
         # ======================================================
         sec4 = _section(
-            outer, row=8,
+            outer,
+            row=8,
             title="Step 4  —  Evaluate the Model & Visualise Results",
             tooltip=(
                 "Run the buttons in order:\n\n"
@@ -1759,28 +1893,35 @@ class App:
 
         # Button 1: run the CNN and save predicted displacements
         def _do_evaluate():
-            stl  = stl_file_var.get().strip()
+            stl = stl_file_var.get().strip()
             mode = traj_mode_var.get()
             if stl:
                 # Curved-surface inference path
                 import threading
+
                 try:
                     from nozzle_trajectory import (
-                        ScanParams, raster_scan, spiral_scan, zigzag_scan,
-                        from_csv, from_npy, NozzleTrajectory,
+                        ScanParams,
+                        raster_scan,
+                        spiral_scan,
+                        zigzag_scan,
+                        from_csv,
+                        from_npy,
+                        NozzleTrajectory,
                     )
-                    G    = int(_cb_size_var.get())
+
+                    G = int(_cb_size_var.get())
                     traj = None
                     if mode == "parametric":
                         sp = ScanParams(
-                            pattern    = _scan_pattern_var.get(),
-                            Lx         = 0.04, Ly=0.04,   # sensible defaults; STL bounds override in code
-                            z_standoff = float(_z_standoff_var.get()),
-                            scan_speed = float(_scan_speed_var.get()),
-                            line_spacing = float(_line_spacing_var.get()),
+                            pattern=_scan_pattern_var.get(),
+                            Lx=0.04,
+                            Ly=0.04,  # sensible defaults; STL bounds override in code
+                            z_standoff=float(_z_standoff_var.get()),
+                            scan_speed=float(_scan_speed_var.get()),
+                            line_spacing=float(_line_spacing_var.get()),
                         )
-                        builders = {"raster": raster_scan, "spiral": spiral_scan,
-                                    "zigzag": zigzag_scan}
+                        builders = {"raster": raster_scan, "spiral": spiral_scan, "zigzag": zigzag_scan}
                         traj = builders.get(sp.pattern, raster_scan)(sp)
                     elif mode == "file":
                         wp = waypoint_file_var.get().strip()
@@ -1798,14 +1939,14 @@ class App:
                     # existing checkerboard as the peening-intensity input.
                     # Passing zeros would mean "no peening" which is not useful.
                     if traj is None:
-                        _eval_cb_path = os.path.join(
-                            checkerboard_folder_var.get(), "checkerboard.npy"
-                        )
+                        _eval_cb_path = os.path.join(checkerboard_folder_var.get(), "checkerboard.npy")
                         if os.path.exists(_eval_cb_path):
                             import numpy as _np
+
                             traj_input = _np.load(_eval_cb_path)
                         else:
                             import numpy as _np
+
                             traj_input = _np.zeros((G, G), dtype="float32")
                     else:
                         traj_input = traj
@@ -1818,8 +1959,9 @@ class App:
                         **kwargs,
                     )
                     print("Curved-surface inference complete.")
-                except Exception as e:   # pylint: disable=broad-except
+                except Exception as e:  # pylint: disable=broad-except
                     import traceback
+
                     print(f"Curved-surface inference failed: {e}")
                     traceback.print_exc()
             else:
@@ -1862,27 +2004,29 @@ class App:
         # Button 3: 3D STL deformation preview (curved-surface path only)
         def _preview_stl():
             import os as _os, numpy as _np
+
             out_dir = output_path_var.get().strip()
-            stl     = stl_file_var.get().strip()
+            stl = stl_file_var.get().strip()
             pred_npy = _os.path.join(out_dir, "pred_displacements_on_stl.npy")
             if not stl:
                 tk.messagebox.showwarning(
-                    "No STL", "Load an STL file before previewing STL deformation.",
+                    "No STL",
+                    "Load an STL file before previewing STL deformation.",
                     parent=dialog,
                 )
                 return
             if not _os.path.exists(pred_npy):
                 tk.messagebox.showwarning(
                     "Run Evaluate First",
-                    "pred_displacements_on_stl.npy not found.\n"
-                    "Run '1. Evaluate Model' with an STL file first.",
+                    "pred_displacements_on_stl.npy not found.\n" "Run '1. Evaluate Model' with an STL file first.",
                     parent=dialog,
                 )
                 return
             try:
                 from stl_surface import STLSurface
+
                 surface = STLSurface(stl)
-                disp    = _np.load(pred_npy)
+                disp = _np.load(pred_npy)
                 if len(disp) != surface.n_vertices:
                     tk.messagebox.showerror(
                         "Vertex count mismatch",
@@ -1897,7 +2041,7 @@ class App:
                     )
                     return
                 visualize_stl_deformation(surface, disp, show=True)
-            except Exception as _e:     # pylint: disable=broad-except
+            except Exception as _e:  # pylint: disable=broad-except
                 tk.messagebox.showerror("Preview Error", str(_e), parent=dialog)
 
         tk.Button(
@@ -1941,7 +2085,7 @@ class App:
         Returns:
             str: The corresponding absolute path.
         """
-        base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
+        base_path = getattr(sys, "_MEIPASS", os.path.abspath("."))
         # Normalise only the relative portion so that forward-slash inputs
         # are converted to the OS separator (backslash on Windows) before
         # joining, while leaving the base_path's separator style untouched.
@@ -2003,14 +2147,12 @@ class App:
         """
         # Guard: path must exist on disk
         if not folder_path or not os.path.exists(folder_path):
-            messagebox.showerror("Error",
-                                 f"The Folder path does not exist: {folder_path}")
+            messagebox.showerror("Error", f"The Folder path does not exist: {folder_path}")
             return
 
         # Guard: path must be a directory, not a file
         if not os.path.isdir(folder_path):
-            messagebox.showerror("Error",
-                                 f"The path is not a directory: {folder_path}")
+            messagebox.showerror("Error", f"The path is not a directory: {folder_path}")
             return
 
         # Guard: directory must not be empty
@@ -2025,7 +2167,7 @@ class App:
                 "checkerboard.npy not found",
                 f"Could not find checkerboard.npy in:\n{folder_path}\n\n"
                 "Make sure you selected a single Simulation_N/ subfolder "
-                "(not the parent dataset folder)."
+                "(not the parent dataset folder).",
             )
             return
 
@@ -2078,12 +2220,10 @@ class App:
         """
         # Guard: both folders must be valid directories
         if not test_folder_path or not os.path.isdir(test_folder_path):
-            messagebox.showerror("Error",
-                                 "Please browse to a valid peen intensity folder in Step 2 first.")
+            messagebox.showerror("Error", "Please browse to a valid peen intensity folder in Step 2 first.")
             return
         if not deformation_folder_path or not os.path.isdir(deformation_folder_path):
-            messagebox.showerror("Error",
-                                 "Please browse to a valid output folder in Step 3 first.")
+            messagebox.showerror("Error", "Please browse to a valid output folder in Step 3 first.")
             return
 
         # --- Curved-surface path ---------------------------------------------------
@@ -2094,11 +2234,9 @@ class App:
         stl_pred = os.path.join(deformation_folder_path, "pred_displacements_on_stl.npy")
         if os.path.exists(stl_pred):
             try:
-                shutil.copy2(stl_pred,
-                             os.path.join(deformation_folder_path, "displacements.npy"))
+                shutil.copy2(stl_pred, os.path.join(deformation_folder_path, "displacements.npy"))
             except Exception as exc:  # pylint: disable=broad-except
-                messagebox.showerror("Error",
-                                     f"Could not stage STL predicted displacements: {exc}")
+                messagebox.showerror("Error", f"Could not stage STL predicted displacements: {exc}")
                 return
             self.root.after(0, lambda: visualize_all(deformation_folder_path, scale_factor=1))
             return
@@ -2106,13 +2244,12 @@ class App:
         # --- Flat-plate path -------------------------------------------------------
         # Guard: mesh files must be present in the input folder
         required = ["node_coords.npy", "node_labels.npy", "disp_node_labels.npy"]
-        missing = [f for f in required
-                   if not os.path.exists(os.path.join(test_folder_path, f))]
+        missing = [f for f in required if not os.path.exists(os.path.join(test_folder_path, f))]
         if missing:
             messagebox.showerror(
                 "Missing mesh files",
                 "The peen intensity folder is missing:\n  " + "\n  ".join(missing) + "\n\n"
-                "Make sure you selected a Simulation_N/ folder that contains these mesh files."
+                "Make sure you selected a Simulation_N/ folder that contains these mesh files.",
             )
             return
 
@@ -2142,7 +2279,7 @@ class App:
                 "No prediction found",
                 "pred_displacements.npy was not found in the output folder.\n\n"
                 "Please click 'Evaluate Model' first to generate predictions, "
-                "then try Preview again."
+                "then try Preview again.",
             )
             return
 
@@ -2203,9 +2340,7 @@ class App:
 
         # Build data loaders, model, loss, and optimizer then run training.
         train_loader, val_loader, _, _ = create_data_loaders(data_folder)
-        model = create_model(input_channels=1,
-                             num_nodes=num_nodes,
-                             checkerboard_size=checkerboard_size)
+        model = create_model(input_channels=1, num_nodes=num_nodes, checkerboard_size=checkerboard_size)
         criterion = torch.nn.MSELoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
         train_model(model, train_loader, val_loader, criterion, optimizer, None)
@@ -2223,10 +2358,10 @@ class App:
             log_widget (tk.Text): The log widget to write into.
             progress_bar (ttk.Progressbar): The bar to animate.
         """
-        log_widget.config(state='normal')
+        log_widget.config(state="normal")
         log_widget.insert(tk.END, "Training started...\n")
         log_widget.see(tk.END)
-        log_widget.config(state='disabled')
+        log_widget.config(state="disabled")
         progress_bar.start(10)
         # Schedule finish_training to be called after a short delay (demo only)
         self.root.after(3000, lambda: self.finish_training(log_widget, progress_bar))
@@ -2242,10 +2377,10 @@ class App:
             progress_bar (ttk.Progressbar): The bar to stop.
         """
         progress_bar.stop()
-        log_widget.config(state='normal')
+        log_widget.config(state="normal")
         log_widget.insert(tk.END, "Training completed!\n")
         log_widget.see(tk.END)
-        log_widget.config(state='disabled')
+        log_widget.config(state="disabled")
 
     def num_of_simulations(self, folder_path):
         """
@@ -2265,7 +2400,7 @@ class App:
         simulation_folders = [
             os.path.join(folder_path, folder)
             for folder in os.listdir(folder_path)
-            if folder.startswith("Simulation_") and folder[len("Simulation_"):].isdigit()
+            if folder.startswith("Simulation_") and folder[len("Simulation_") :].isdigit()
         ]
         print(f"# Simulation folders: {len(simulation_folders)}")
         return len(simulation_folders)

@@ -44,6 +44,7 @@ if src_path not in sys.path:
 # Shared fixture — mocked App instance
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def app():
     """
@@ -54,9 +55,9 @@ def app():
     The mock root supports winfo_children(), title(), geometry() and
     after() so that App.__init__ completes without error.
     """
-    with patch("tkinter.Tk") as mock_tk_class, \
-         patch("PIL.Image.open") as mock_img_open, \
-         patch("PIL.ImageTk.PhotoImage"):
+    with patch("tkinter.Tk") as mock_tk_class, patch("PIL.Image.open") as mock_img_open, patch(
+        "PIL.ImageTk.PhotoImage"
+    ):
 
         # Configure the mock root window
         mock_root = MagicMock()
@@ -70,6 +71,7 @@ def app():
 
         # Import here (after mocks are active) to avoid display errors at import time
         from shotpeen_gui import App  # noqa: PLC0415
+
         instance = App(mock_root)
 
     return instance
@@ -79,12 +81,14 @@ def app():
 @pytest.fixture
 def App():  # noqa: N802
     from shotpeen_gui import App as _App  # noqa: PLC0415
+
     return _App
 
 
 # ============================================================================
 # App initialisation
 # ============================================================================
+
 
 class TestAppInitialisation:
     """Tests for App.__init__ and App.main_menu setup."""
@@ -121,10 +125,11 @@ class TestAppInitialisation:
 
     def test_missing_bullet_bill_raises_file_not_found(self):
         """Edge: if the splash image is absent, a FileNotFoundError is raised."""
-        with patch("tkinter.Tk"), \
-             patch("PIL.Image.open", side_effect=FileNotFoundError("not found")), \
-             patch("PIL.ImageTk.PhotoImage"):
+        with patch("tkinter.Tk"), patch("PIL.Image.open", side_effect=FileNotFoundError("not found")), patch(
+            "PIL.ImageTk.PhotoImage"
+        ):
             from shotpeen_gui import App  # noqa: PLC0415
+
             mock_root = MagicMock()
             mock_root.winfo_children.return_value = []
             with pytest.raises(FileNotFoundError):
@@ -134,6 +139,7 @@ class TestAppInitialisation:
 # ============================================================================
 # App.get_file_path
 # ============================================================================
+
 
 class TestGetFilePath:
     """Tests for the path-resolution helper (dev mode vs PyInstaller .exe)."""
@@ -159,6 +165,7 @@ class TestGetFilePath:
         """One-shot: without _MEIPASS the path is based on os.path.abspath('.')."""
         # Ensure _MEIPASS is not present
         import sys as _sys  # noqa: PLC0415
+
         _sys.__dict__.pop("_MEIPASS", None)
         result = app.get_file_path("subdir/file.txt")
         expected_base = os.path.abspath(".")
@@ -168,6 +175,7 @@ class TestGetFilePath:
 # ============================================================================
 # App.check_file_in_folder
 # ============================================================================
+
 
 class TestCheckFileInFolder:
     """Tests for the file-existence helper."""
@@ -201,6 +209,7 @@ class TestCheckFileInFolder:
 # App.num_of_simulations
 # ============================================================================
 
+
 class TestNumOfSimulations:
     """Tests for the simulation-folder counter."""
 
@@ -216,9 +225,7 @@ class TestNumOfSimulations:
 
     def test_ignores_non_matching_directories(self, app, tmp_path):
         """One-shot: non-Simulation_ dirs are not counted."""
-        self._make_sim_dirs(
-            tmp_path, ["Simulation_0", "Simulation_1", "results", "Simulation_abc"]
-        )
+        self._make_sim_dirs(tmp_path, ["Simulation_0", "Simulation_1", "results", "Simulation_abc"])
         # "Simulation_abc" has a non-digit suffix and should be ignored
         assert app.num_of_simulations(str(tmp_path)) == 2
 
@@ -241,12 +248,14 @@ class TestNumOfSimulations:
 # App.browse_file
 # ============================================================================
 
+
 class TestBrowseFile:
     """Tests for the file-browse dialog helper."""
 
     def test_sets_variable_on_selection(self, app):
         """One-shot: StringVar is updated with the chosen file path."""
         import tkinter as tk  # noqa: PLC0415
+
         var = MagicMock()
         with patch("tkinter.filedialog.askopenfilename", return_value="/chosen/file.pth"):
             app.browse_file(var)
@@ -269,6 +278,7 @@ class TestBrowseFile:
 # ============================================================================
 # App.browse_directory
 # ============================================================================
+
 
 class TestBrowseDirectory:
     """Tests for the directory-browse dialog helper."""
@@ -298,24 +308,23 @@ class TestBrowseDirectory:
 # App.train_model
 # ============================================================================
 
+
 class TestTrainModel:
     """Tests for the programmatic (non-GUI) train_model method."""
 
     def test_nonexistent_directory_shows_error(self, app):
         """One-shot: a path that does not exist triggers messagebox.showerror."""
         bad_path = "/tmp/nonexistent_training_data_folder_xyz"
-        with patch("tkinter.messagebox.showerror") as mock_err, \
-             patch("os.path.exists", return_value=False):
+        with patch("tkinter.messagebox.showerror") as mock_err, patch("os.path.exists", return_value=False):
             app.train_model(bad_path)
-            mock_err.assert_called_once_with(
-                "Error", f"The folder path does not exist: {bad_path}"
-            )
+            mock_err.assert_called_once_with("Error", f"The folder path does not exist: {bad_path}")
 
     def test_existing_directory_does_not_show_error(self, app, tmp_path):
         """One-shot: with a valid directory, showerror is NOT called immediately."""
         # The actual training call will fail (no data), so we also mock it out
-        with patch("tkinter.messagebox.showerror") as mock_err, \
-             patch("shotpeen_gui.create_data_loaders", side_effect=Exception("no data")):
+        with patch("tkinter.messagebox.showerror") as mock_err, patch(
+            "shotpeen_gui.create_data_loaders", side_effect=Exception("no data")
+        ):
             try:
                 app.train_model(str(tmp_path))
             except Exception:
@@ -329,6 +338,7 @@ class TestTrainModel:
 # App.preview_file
 # ============================================================================
 
+
 class TestPreviewFile:
     """Tests for the input peen-intensity preview helper."""
 
@@ -337,9 +347,7 @@ class TestPreviewFile:
         bad_path = "/tmp/nonexistent_preview_folder_xyz"
         with patch("tkinter.messagebox.showerror") as mock_err:
             app.preview_file(bad_path)
-            mock_err.assert_called_once_with(
-                "Error", f"The Folder path does not exist: {bad_path}"
-            )
+            mock_err.assert_called_once_with("Error", f"The Folder path does not exist: {bad_path}")
 
     def test_file_path_instead_of_dir_shows_error(self, app, tmp_path):
         """Edge: passing a file path (not a directory) triggers showerror."""
@@ -348,8 +356,9 @@ class TestPreviewFile:
         with patch("tkinter.messagebox.showerror") as mock_err:
             app.preview_file(str(f))
             mock_err.assert_called_once()
-            assert "not a directory" in mock_err.call_args[0][1].lower() or \
-                   "directory" in mock_err.call_args[0][1].lower()
+            assert (
+                "not a directory" in mock_err.call_args[0][1].lower() or "directory" in mock_err.call_args[0][1].lower()
+            )
 
     def test_empty_directory_shows_warning(self, app, tmp_path):
         """Edge: valid but empty directory triggers showwarning."""
@@ -376,6 +385,7 @@ class TestPreviewFile:
 # App.preview_deformation
 # ============================================================================
 
+
 class TestPreviewDeformation:
     """Tests for the deformation preview helper."""
 
@@ -396,8 +406,7 @@ class TestPreviewDeformation:
             app.preview_deformation(str(test_folder), str(output_folder))
             # displacements.npy is absent in output_folder → error expected
             mock_err.assert_called_once()
-            assert "evaluate" in mock_err.call_args[0][1].lower() or \
-                   "displacement" in mock_err.call_args[0][1].lower()
+            assert "evaluate" in mock_err.call_args[0][1].lower() or "displacement" in mock_err.call_args[0][1].lower()
 
     def test_copies_required_files_to_output(self, app, tmp_path):
         """One-shot: node_coords.npy, node_labels.npy, disp_node_labels.npy are copied."""
@@ -422,6 +431,7 @@ class TestPreviewDeformation:
 # ============================================================================
 # App.start_training / finish_training
 # ============================================================================
+
 
 class TestTrainingLogHelpers:
     """Tests for the log/progress-bar helpers (used in simulated training UI)."""
@@ -469,12 +479,14 @@ class TestTrainingLogHelpers:
 # check_install (module-level function)
 # ============================================================================
 
+
 class TestCheckInstall:
     """Tests for the standalone dependency-checker utility."""
 
     def test_installed_package_does_not_call_subprocess(self):
         """One-shot: an already-installed package never triggers pip/conda."""
         from shotpeen_gui import check_install  # noqa: PLC0415
+
         with patch("subprocess.check_call") as mock_sub:
             check_install("os")  # 'os' is always available
             mock_sub.assert_not_called()
@@ -482,14 +494,12 @@ class TestCheckInstall:
     def test_missing_package_attempts_pip_install(self):
         """One-shot: a missing package causes a subprocess pip call."""
         from shotpeen_gui import check_install  # noqa: PLC0415
-        with patch("builtins.__import__", side_effect=ModuleNotFoundError), \
-             patch("subprocess.check_call") as mock_sub:
+
+        with patch("builtins.__import__", side_effect=ModuleNotFoundError), patch("subprocess.check_call") as mock_sub:
             check_install("definitely_not_a_real_package_xyz")
             # At minimum, pip install should have been attempted
             mock_sub.assert_called()
-            pip_calls = [
-                c for c in mock_sub.call_args_list if "pip" in str(c)
-            ]
+            pip_calls = [c for c in mock_sub.call_args_list if "pip" in str(c)]
             assert len(pip_calls) >= 1
 
 

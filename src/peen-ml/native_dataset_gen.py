@@ -64,6 +64,7 @@ Notes
     Abaqus's internal meshing algorithm. The analytical physics is identical;
     only the node count differs, requiring a one-line change in model.py.
 """
+
 from __future__ import annotations
 
 import os
@@ -82,8 +83,8 @@ _SRC = os.path.dirname(os.path.abspath(__file__))
 if _SRC not in sys.path:
     sys.path.insert(0, _SRC)
 
-from impact_sim import ShotPeenParams          # noqa: E402
-from multi_shot_sim import (                   # noqa: E402
+from impact_sim import ShotPeenParams  # noqa: E402
+from multi_shot_sim import (  # noqa: E402
     MultiShotParams,
     run_multi_shot_simulation,
     compute_physics_checkerboard,
@@ -91,7 +92,7 @@ from multi_shot_sim import (                   # noqa: E402
     compute_cupping_from_profile,
     element_to_nodal_stress,
 )
-from materials import (                        # noqa: E402
+from materials import (  # noqa: E402
     get_workpiece,
     get_shot,
     WORKPIECE_MATERIALS,
@@ -104,6 +105,7 @@ __all__ = ["GeneratorParams", "generate_dataset", "generate_single_simulation"]
 # ---------------------------------------------------------------------------
 # 1.  Generator configuration
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class GeneratorParams:
@@ -159,8 +161,8 @@ class GeneratorParams:
     # Mesh
     Nx: int = 50
     Ny: int = 50
-    Lx: float = 0.010        # m
-    Ly: float = 0.010        # m
+    Lx: float = 0.010  # m
+    Ly: float = 0.010  # m
 
     # Shot pattern
     checkerboard_size: int = 5
@@ -168,37 +170,36 @@ class GeneratorParams:
     vary_distribution: bool = False
 
     # Physics ranges (uniform random)
-    V_range: Tuple[float, float] = (25.0, 60.0)      # m/s
-    D_range: Tuple[float, float] = (0.0003, 0.0010)   # m
+    V_range: Tuple[float, float] = (25.0, 60.0)  # m/s
+    D_range: Tuple[float, float] = (0.0003, 0.0010)  # m
     n_shots_range: Tuple[int, int] = (20, 120)
-    sy_range: Tuple[float, float] = (200e6, 400e6)    # Pa
-    V_scatter: float = 2.0                             # m/s
+    sy_range: Tuple[float, float] = (200e6, 400e6)  # Pa
+    V_scatter: float = 2.0  # m/s
 
     # Checkerboard pattern generation modes (drawn randomly per simulation)
-    pattern_modes: List[str] = field(
-        default_factory=lambda: ["uniform", "bimodal", "gradient", "random", "sparse"]
-    )
+    pattern_modes: List[str] = field(default_factory=lambda: ["uniform", "bimodal", "gradient", "random", "sparse"])
 
     # Reproducibility
     base_seed: int = 0
 
     # Material selection — named preset from materials.py (empty = use defaults)
-    workpiece_material: str = ""   # e.g. "Ti-6Al-4V", "316L-SS", "Al-7075-T6"
-    shot_material:      str = ""   # e.g. "steel", "ceramic", "glass"
+    workpiece_material: str = ""  # e.g. "Ti-6Al-4V", "316L-SS", "Al-7075-T6"
+    shot_material: str = ""  # e.g. "steel", "ceramic", "glass"
 
     # Manual overrides (only applied when the corresponding material str is "custom")
-    E_b:          Optional[float] = None   # workpiece Young's modulus (Pa)
-    nu_b:         Optional[float] = None   # workpiece Poisson's ratio
-    sigma_yield:  Optional[float] = None   # workpiece yield stress (Pa)
-    c:            Optional[float] = None   # workpiece hardening modulus (Pa)
-    E_s:          Optional[float] = None   # shot Young's modulus (Pa)
-    nu_s:         Optional[float] = None   # shot Poisson's ratio
-    rho_s:        Optional[float] = None   # shot density (kg/m³)
+    E_b: Optional[float] = None  # workpiece Young's modulus (Pa)
+    nu_b: Optional[float] = None  # workpiece Poisson's ratio
+    sigma_yield: Optional[float] = None  # workpiece yield stress (Pa)
+    c: Optional[float] = None  # workpiece hardening modulus (Pa)
+    E_s: Optional[float] = None  # shot Young's modulus (Pa)
+    nu_s: Optional[float] = None  # shot Poisson's ratio
+    rho_s: Optional[float] = None  # shot density (kg/m³)
 
 
 # ---------------------------------------------------------------------------
 # 2.  Checkerboard pattern generators
 # ---------------------------------------------------------------------------
+
 
 def _make_checkerboard(
     mode: str,
@@ -240,7 +241,7 @@ def _make_checkerboard(
 
     elif mode == "gradient":
         # Linear intensity gradient across one axis
-        axis = rng.integers(2)   # 0 = along rows, 1 = along columns
+        axis = rng.integers(2)  # 0 = along rows, 1 = along columns
         vals = np.linspace(lo, hi, G, dtype=np.float32)
         if axis == 0:
             cb = np.tile(vals[:, None], (1, G))
@@ -259,8 +260,7 @@ def _make_checkerboard(
         cb.ravel()[flat_idx] = rng.uniform(lo, hi, len(flat_idx)).astype(np.float32)
 
     else:
-        raise ValueError(f"Unknown pattern mode '{mode}'. "
-                         "Choose from: uniform, bimodal, gradient, random, sparse.")
+        raise ValueError(f"Unknown pattern mode '{mode}'. " "Choose from: uniform, bimodal, gradient, random, sparse.")
 
     # Clip to valid range
     cb = np.clip(cb, lo, hi)
@@ -271,6 +271,7 @@ def _make_checkerboard(
 # 2b.  Material resolution helpers
 # ---------------------------------------------------------------------------
 
+
 def _resolve_workpiece(gp: GeneratorParams) -> Dict:
     """Return resolved workpiece property dict for this GeneratorParams.
 
@@ -280,64 +281,74 @@ def _resolve_workpiece(gp: GeneratorParams) -> Dict:
       3. ShotPeenParams dataclass defaults
     """
     from impact_sim import ShotPeenParams as _SP
+
     _defaults = _SP()
     base: Dict = {
-        "E_b":           _defaults.E_b,
-        "nu_b":          _defaults.nu_b,
-        "sigma_yield":   _defaults.sigma_yield,
-        "c":             _defaults.c,
-        "source":        "ShotPeenParams defaults",
+        "E_b": _defaults.E_b,
+        "nu_b": _defaults.nu_b,
+        "sigma_yield": _defaults.sigma_yield,
+        "c": _defaults.c,
+        "source": "ShotPeenParams defaults",
     }
     if gp.workpiece_material and gp.workpiece_material != "custom":
         try:
             lib = get_workpiece(gp.workpiece_material)
             base = {
-                "E_b":         lib["E"],
-                "nu_b":        lib["nu"],
+                "E_b": lib["E"],
+                "nu_b": lib["nu"],
                 "sigma_yield": lib["sigma_yield"],
-                "c":           lib["c"],
-                "source":      lib["source"],
+                "c": lib["c"],
+                "source": lib["source"],
             }
         except KeyError:
             pass  # unknown name → keep defaults
     # Apply manual overrides
-    if gp.E_b is not None:           base["E_b"]         = gp.E_b
-    if gp.nu_b is not None:          base["nu_b"]        = gp.nu_b
-    if gp.sigma_yield is not None:   base["sigma_yield"] = gp.sigma_yield
-    if gp.c is not None:             base["c"]           = gp.c
+    if gp.E_b is not None:
+        base["E_b"] = gp.E_b
+    if gp.nu_b is not None:
+        base["nu_b"] = gp.nu_b
+    if gp.sigma_yield is not None:
+        base["sigma_yield"] = gp.sigma_yield
+    if gp.c is not None:
+        base["c"] = gp.c
     return base
 
 
 def _resolve_shot(gp: GeneratorParams) -> Dict:
     """Return resolved shot property dict for this GeneratorParams."""
     from impact_sim import ShotPeenParams as _SP
+
     _defaults = _SP()
     base: Dict = {
-        "E_s":    _defaults.E_s,
-        "nu_s":   _defaults.nu_s,
-        "rho_s":  _defaults.rho_s,
+        "E_s": _defaults.E_s,
+        "nu_s": _defaults.nu_s,
+        "rho_s": _defaults.rho_s,
         "source": "ShotPeenParams defaults",
     }
     if gp.shot_material and gp.shot_material != "custom":
         try:
             lib = get_shot(gp.shot_material)
             base = {
-                "E_s":    lib["E_s"],
-                "nu_s":   lib["nu_s"],
-                "rho_s":  lib["rho_s"],
+                "E_s": lib["E_s"],
+                "nu_s": lib["nu_s"],
+                "rho_s": lib["rho_s"],
                 "source": lib["source"],
             }
         except KeyError:
             pass
-    if gp.E_s is not None:   base["E_s"]   = gp.E_s
-    if gp.nu_s is not None:  base["nu_s"]  = gp.nu_s
-    if gp.rho_s is not None: base["rho_s"] = gp.rho_s
+    if gp.E_s is not None:
+        base["E_s"] = gp.E_s
+    if gp.nu_s is not None:
+        base["nu_s"] = gp.nu_s
+    if gp.rho_s is not None:
+        base["rho_s"] = gp.rho_s
     return base
 
 
 # ---------------------------------------------------------------------------
 # 3.  Single-simulation runner (called by parallel workers)
 # ---------------------------------------------------------------------------
+
 
 def generate_single_simulation(
     sim_index: int,
@@ -365,16 +376,19 @@ def generate_single_simulation(
     # ---- Resolve material properties ----
     wp_props = _resolve_workpiece(gen_params)
     sp_props = _resolve_shot(gen_params)
-    wp_name   = gen_params.workpiece_material or "default"
-    sp_name   = gen_params.shot_material or "default"
+    wp_name = gen_params.workpiece_material or "default"
+    sp_name = gen_params.shot_material or "default"
 
     # ---- Draw randomised physics ----
-    V  = float(rng.uniform(*gen_params.V_range))
-    D  = float(rng.uniform(*gen_params.D_range))
+    V = float(rng.uniform(*gen_params.V_range))
+    D = float(rng.uniform(*gen_params.D_range))
     # sigma_yield: use material library value if available, else random sweep
-    sy = float(wp_props["sigma_yield"]) if wp_props.get("sigma_yield") is not None and gen_params.workpiece_material else float(rng.uniform(*gen_params.sy_range))
-    n_shots = int(rng.integers(gen_params.n_shots_range[0],
-                               gen_params.n_shots_range[1] + 1))
+    sy = (
+        float(wp_props["sigma_yield"])
+        if wp_props.get("sigma_yield") is not None and gen_params.workpiece_material
+        else float(rng.uniform(*gen_params.sy_range))
+    )
+    n_shots = int(rng.integers(gen_params.n_shots_range[0], gen_params.n_shots_range[1] + 1))
 
     # ---- Draw distribution mode ----
     if gen_params.vary_distribution:
@@ -392,17 +406,23 @@ def generate_single_simulation(
 
     # ---- Build ShotPeenParams ----
     bp = ShotPeenParams(
-        V=V, D=D, sigma_yield=sy,
-        E_b=wp_props["E_b"], nu_b=wp_props["nu_b"], c=wp_props["c"],
-        E_s=sp_props["E_s"], nu_s=sp_props["nu_s"], rho_s=sp_props["rho_s"],
-        n_depth=5000,            # coarser depth resolution for speed
+        V=V,
+        D=D,
+        sigma_yield=sy,
+        E_b=wp_props["E_b"],
+        nu_b=wp_props["nu_b"],
+        c=wp_props["c"],
+        E_s=sp_props["E_s"],
+        nu_s=sp_props["nu_s"],
+        rho_s=sp_props["rho_s"],
+        n_depth=5000,  # coarser depth resolution for speed
     )
 
     # ---- Build MultiShotParams ----
     msp = MultiShotParams(
         base_params=bp,
         n_shots=n_shots,
-        distribution="checkerboard",   # always use checkerboard-driven positions
+        distribution="checkerboard",  # always use checkerboard-driven positions
         seed=seed,
         V_scatter=gen_params.V_scatter,
         Lx=gen_params.Lx,
@@ -426,8 +446,10 @@ def generate_single_simulation(
 
         # 6-channel physics checkerboard
         phys_cb = compute_physics_checkerboard(
-            results["per_shot_physics"], G,
-            gen_params.Lx, gen_params.Ly,
+            results["per_shot_physics"],
+            G,
+            gen_params.Lx,
+            gen_params.Ly,
         )
         np.save(os.path.join(out_folder, "checkerboard_physics.npy"), phys_cb)
 
@@ -436,13 +458,13 @@ def generate_single_simulation(
         if results["per_shot_physics"]:
             sp0 = results["per_shot_physics"][0]
             inf_fields = compute_influence_fields(
-                shot_positions = results["centres"],          # (M, 2)
-                node_coords    = results["node_coords"],      # (N, 3)
-                a_p            = sp0["a_p"],
-                r_p            = sp0["r_p"],
-                delta_p        = sp0["delta_p"],
-                Nx             = gen_params.Nx,
-                Ny             = gen_params.Ny,
+                shot_positions=results["centres"],  # (M, 2)
+                node_coords=results["node_coords"],  # (N, 3)
+                a_p=sp0["a_p"],
+                r_p=sp0["r_p"],
+                delta_p=sp0["delta_p"],
+                Nx=gen_params.Nx,
+                Ny=gen_params.Ny,
             )
             np.save(os.path.join(out_folder, "influence_fields.npy"), inf_fields)
 
@@ -450,49 +472,47 @@ def generate_single_simulation(
         cupping_m = compute_cupping_from_profile(
             results["sR_depth_profile"],
             E_b=wp_props["E_b"],
-            t_plate=0.003,          # 3 mm default plate thickness
+            t_plate=0.003,  # 3 mm default plate thickness
             L_plate=gen_params.Lx,
         )
-        np.save(os.path.join(out_folder, "cupping.npy"),
-                np.array(cupping_m, dtype=np.float32))
+        np.save(os.path.join(out_folder, "cupping.npy"), np.array(cupping_m, dtype=np.float32))
 
         # Nodal stresses (element-averaged)
         connectivity = results["element_connectivity"]
         num_nodes = len(results["node_labels"])
-        nodal_stress = element_to_nodal_stress(
-            results["stresses"], connectivity, num_nodes
-        )
+        nodal_stress = element_to_nodal_stress(results["stresses"], connectivity, num_nodes)
         np.save(os.path.join(out_folder, "nodal_stresses.npy"), nodal_stress)
 
         # Write a plain-text metadata file for traceability
-        _write_metadata(out_folder, sim_index, gen_params, bp, msp,
-                        pattern_mode, results, wp_name, sp_name, wp_props, sp_props)
+        _write_metadata(
+            out_folder, sim_index, gen_params, bp, msp, pattern_mode, results, wp_name, sp_name, wp_props, sp_props
+        )
 
         elapsed = time.perf_counter() - t0
         return {
-            "sim_index":       sim_index,
-            "output_dir":      out_folder,
-            "n_nodes":         len(results["node_labels"]),
-            "n_elems":         len(results["elem_labels"]),
+            "sim_index": sim_index,
+            "output_dir": out_folder,
+            "n_nodes": len(results["node_labels"]),
+            "n_elems": len(results["elem_labels"]),
             "coverage_percent": results["coverage"]["coverage_percent"],
-            "almen_MPa":       results["almen_intensity_MPa"],
-            "V":               V,
-            "D_mm":            D * 1e3,
-            "n_shots":         n_shots,
-            "pattern_mode":    pattern_mode,
-            "elapsed_s":       elapsed,
-            "success":         True,
-            "error":           None,
+            "almen_MPa": results["almen_intensity_MPa"],
+            "V": V,
+            "D_mm": D * 1e3,
+            "n_shots": n_shots,
+            "pattern_mode": pattern_mode,
+            "elapsed_s": elapsed,
+            "success": True,
+            "error": None,
         }
 
-    except Exception as exc:       # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         elapsed = time.perf_counter() - t0
         return {
-            "sim_index":   sim_index,
-            "output_dir":  out_folder,
-            "elapsed_s":   elapsed,
-            "success":     False,
-            "error":       str(exc),
+            "sim_index": sim_index,
+            "output_dir": out_folder,
+            "elapsed_s": elapsed,
+            "success": False,
+            "error": str(exc),
         }
 
 
@@ -544,6 +564,7 @@ def _write_metadata(
 # 4.  Main dataset generator
 # ---------------------------------------------------------------------------
 
+
 def generate_dataset(
     gen_params: Optional[GeneratorParams] = None,
     verbose: bool = True,
@@ -564,10 +585,12 @@ def generate_dataset(
 
     os.makedirs(gen_params.output_dir, exist_ok=True)
 
-    indices = list(range(
-        gen_params.start_index,
-        gen_params.start_index + gen_params.n_simulations,
-    ))
+    indices = list(
+        range(
+            gen_params.start_index,
+            gen_params.start_index + gen_params.n_simulations,
+        )
+    )
     n_total = len(indices)
 
     _log = print if verbose else (lambda *a, **k: None)
@@ -575,12 +598,10 @@ def generate_dataset(
     _log("Native Dataset Generator -- peen-ml")
     _log(f"  Output   : {gen_params.output_dir}")
     _log(f"  Cases    : {n_total}  (indices {indices[0]}-{indices[-1]})")
-    _log(f"  Mesh     : {gen_params.Nx}x{gen_params.Ny}  "
-         f"-> {(gen_params.Nx+1)*(gen_params.Ny+1)} nodes")
+    _log(f"  Mesh     : {gen_params.Nx}x{gen_params.Ny}  " f"-> {(gen_params.Nx+1)*(gen_params.Ny+1)} nodes")
     _log(f"  Workers  : {gen_params.workers}")
     _log(f"  V range  : {gen_params.V_range[0]}-{gen_params.V_range[1]} m/s")
-    _log(f"  D range  : {gen_params.D_range[0]*1e3:.3f}-"
-         f"{gen_params.D_range[1]*1e3:.3f} mm")
+    _log(f"  D range  : {gen_params.D_range[0]*1e3:.3f}-" f"{gen_params.D_range[1]*1e3:.3f} mm")
     _log(f"  Shots/sim: {gen_params.n_shots_range[0]}-{gen_params.n_shots_range[1]}")
     _log("=" * 60)
 
@@ -596,21 +617,19 @@ def generate_dataset(
             if res["success"]:
                 n_ok += 1
                 if verbose:
-                    print(f"  [{idx+1:4d}/{n_total}] Sim_{sim_idx:04d}  "
-                          f"coverage={res['coverage_percent']:.1f}%  "
-                          f"almen={res['almen_MPa']:.0f} MPa  "
-                          f"({res['elapsed_s']:.1f}s)")
+                    print(
+                        f"  [{idx+1:4d}/{n_total}] Sim_{sim_idx:04d}  "
+                        f"coverage={res['coverage_percent']:.1f}%  "
+                        f"almen={res['almen_MPa']:.0f} MPa  "
+                        f"({res['elapsed_s']:.1f}s)"
+                    )
             else:
                 n_fail += 1
-                print(f"  [{idx+1:4d}/{n_total}] Sim_{sim_idx:04d}  "
-                      f"FAILED: {res['error']}")
+                print(f"  [{idx+1:4d}/{n_total}] Sim_{sim_idx:04d}  " f"FAILED: {res['error']}")
     else:
         # Parallel
         with ProcessPoolExecutor(max_workers=gen_params.workers) as pool:
-            futures = {
-                pool.submit(generate_single_simulation, si, gen_params): si
-                for si in indices
-            }
+            futures = {pool.submit(generate_single_simulation, si, gen_params): si for si in indices}
             done = 0
             for future in as_completed(futures):
                 res = future.result()
@@ -619,14 +638,15 @@ def generate_dataset(
                 if res["success"]:
                     n_ok += 1
                     if verbose:
-                        print(f"  [{done:4d}/{n_total}] Sim_{res['sim_index']:04d}  "
-                              f"coverage={res['coverage_percent']:.1f}%  "
-                              f"almen={res['almen_MPa']:.0f} MPa  "
-                              f"({res['elapsed_s']:.1f}s)")
+                        print(
+                            f"  [{done:4d}/{n_total}] Sim_{res['sim_index']:04d}  "
+                            f"coverage={res['coverage_percent']:.1f}%  "
+                            f"almen={res['almen_MPa']:.0f} MPa  "
+                            f"({res['elapsed_s']:.1f}s)"
+                        )
                 else:
                     n_fail += 1
-                    print(f"  [{done:4d}/{n_total}] Sim_{res['sim_index']:04d}  "
-                          f"FAILED: {res['error']}")
+                    print(f"  [{done:4d}/{n_total}] Sim_{res['sim_index']:04d}  " f"FAILED: {res['error']}")
 
     elapsed = time.perf_counter() - t_start
 
@@ -635,8 +655,7 @@ def generate_dataset(
     _write_summary_csv(summary_path, results)
 
     _log("=" * 60)
-    _log(f"Done.  {n_ok}/{n_total} OK,  {n_fail} failed  "
-         f"({elapsed:.0f} s total,  {elapsed/n_total:.1f} s/sim)")
+    _log(f"Done.  {n_ok}/{n_total} OK,  {n_fail} failed  " f"({elapsed:.0f} s total,  {elapsed/n_total:.1f} s/sim)")
     _log(f"Summary CSV: {summary_path}")
     _log("=" * 60)
 
@@ -654,10 +673,20 @@ def generate_dataset(
 
 def _write_summary_csv(path: str, results: List[Dict]) -> None:
     import csv
+
     fieldnames = [
-        "sim_index", "success", "n_nodes", "n_elems",
-        "coverage_percent", "almen_MPa", "V", "D_mm",
-        "n_shots", "pattern_mode", "elapsed_s", "error",
+        "sim_index",
+        "success",
+        "n_nodes",
+        "n_elems",
+        "coverage_percent",
+        "almen_MPa",
+        "V",
+        "D_mm",
+        "n_shots",
+        "pattern_mode",
+        "elapsed_s",
+        "error",
     ]
     with open(path, "w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
@@ -670,6 +699,7 @@ def _write_summary_csv(path: str, results: List[Dict]) -> None:
 # 5.  Validation helpers
 # ---------------------------------------------------------------------------
 
+
 def validate_dataset(dataset_dir: str, n_check: int = 5) -> None:
     """Quick sanity-check on the generated dataset.
 
@@ -681,11 +711,14 @@ def validate_dataset(dataset_dir: str, n_check: int = 5) -> None:
     dataset_dir : Root directory of the generated dataset.
     n_check     : Number of simulations to inspect.
     """
-    sims = sorted([
-        d for d in os.listdir(dataset_dir)
-        if d.startswith("Simulation_") and
-        os.path.isdir(os.path.join(dataset_dir, d))
-    ], key=lambda x: int(x.split("_")[1]))
+    sims = sorted(
+        [
+            d
+            for d in os.listdir(dataset_dir)
+            if d.startswith("Simulation_") and os.path.isdir(os.path.join(dataset_dir, d))
+        ],
+        key=lambda x: int(x.split("_")[1]),
+    )
 
     rng = np.random.default_rng(0)
     sample = rng.choice(sims, size=min(n_check, len(sims)), replace=False)
@@ -695,10 +728,15 @@ def validate_dataset(dataset_dir: str, n_check: int = 5) -> None:
     print(f"  Checking {len(sample)} samples …\n")
 
     required_files = [
-        "checkerboard.npy", "displacements.npy", "stresses.npy",
-        "node_coords.npy", "node_labels.npy",
-        "element_connectivity.npy", "element_labels.npy",
-        "disp_node_labels.npy", "stress_element_labels.npy",
+        "checkerboard.npy",
+        "displacements.npy",
+        "stresses.npy",
+        "node_coords.npy",
+        "node_labels.npy",
+        "element_connectivity.npy",
+        "element_labels.npy",
+        "disp_node_labels.npy",
+        "stress_element_labels.npy",
     ]
 
     all_ok = True
@@ -733,7 +771,7 @@ def validate_dataset(dataset_dir: str, n_check: int = 5) -> None:
                 if np.all(uz == 0):
                     errors.append("All uz displacements are zero — suspect")
                     ok = False
-                if np.max(np.abs(uz)) > 0.01:   # >10 mm deformation is unphysical
+                if np.max(np.abs(uz)) > 0.01:  # >10 mm deformation is unphysical
                     errors.append(f"Max |uz| = {np.max(np.abs(uz))*1e3:.2f} mm — too large")
                     ok = False
 
@@ -754,54 +792,58 @@ def validate_dataset(dataset_dir: str, n_check: int = 5) -> None:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Generate peen-ml training dataset (no Abaqus required)."
-    )
-    parser.add_argument("--output",   default="./Dataset_Python",
-                        help="Root output directory")
-    parser.add_argument("--n_sims",   type=int, default=100,
-                        help="Number of simulation cases")
-    parser.add_argument("--start",    type=int, default=0,
-                        help="Starting simulation index")
-    parser.add_argument("--Nx",       type=int, default=50)
-    parser.add_argument("--Ny",       type=int, default=50)
-    parser.add_argument("--Lx",       type=float, default=0.010)
-    parser.add_argument("--Ly",       type=float, default=0.010)
-    parser.add_argument("--workers",  type=int, default=1,
-                        help="Parallel workers (1 = sequential)")
-    parser.add_argument("--seed",     type=int, default=0)
-    parser.add_argument("--V_min",    type=float, default=25.0)
-    parser.add_argument("--V_max",    type=float, default=60.0)
-    parser.add_argument("--D_min",    type=float, default=0.0003)
-    parser.add_argument("--D_max",    type=float, default=0.0010)
+    parser = argparse.ArgumentParser(description="Generate peen-ml training dataset (no Abaqus required).")
+    parser.add_argument("--output", default="./Dataset_Python", help="Root output directory")
+    parser.add_argument("--n_sims", type=int, default=100, help="Number of simulation cases")
+    parser.add_argument("--start", type=int, default=0, help="Starting simulation index")
+    parser.add_argument("--Nx", type=int, default=50)
+    parser.add_argument("--Ny", type=int, default=50)
+    parser.add_argument("--Lx", type=float, default=0.010)
+    parser.add_argument("--Ly", type=float, default=0.010)
+    parser.add_argument("--workers", type=int, default=1, help="Parallel workers (1 = sequential)")
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--V_min", type=float, default=25.0)
+    parser.add_argument("--V_max", type=float, default=60.0)
+    parser.add_argument("--D_min", type=float, default=0.0003)
+    parser.add_argument("--D_max", type=float, default=0.0010)
     parser.add_argument("--n_shots_min", type=int, default=20)
     parser.add_argument("--n_shots_max", type=int, default=120)
-    parser.add_argument("--grid_size",   type=int, default=5,
-                        help="Checkerboard grid resolution (G×G)")
-    parser.add_argument("--validate", action="store_true",
-                        help="Run validation checks after generation")
+    parser.add_argument("--grid_size", type=int, default=5, help="Checkerboard grid resolution (G×G)")
+    parser.add_argument("--validate", action="store_true", help="Run validation checks after generation")
 
     # Material selection
-    parser.add_argument("--workpiece_material", default="",
-                        choices=[""] + sorted(WORKPIECE_MATERIALS) + ["custom"],
-                        metavar="NAME",
-                        help=("Named workpiece material from library "
-                              f"({', '.join(sorted(WORKPIECE_MATERIALS))}) "
-                              "or 'custom' to use --E_b/--nu_b/etc. overrides. "
-                              "Default: ShotPeenParams built-in values."))
-    parser.add_argument("--shot_material", default="",
-                        choices=[""] + sorted(SHOT_MATERIALS) + ["custom"],
-                        metavar="NAME",
-                        help=("Named shot material from library "
-                              f"({', '.join(sorted(SHOT_MATERIALS))}) "
-                              "or 'custom'. Default: ShotPeenParams built-in values."))
-    parser.add_argument("--E_b",         type=float, default=None, help="Override workpiece E (Pa)")
-    parser.add_argument("--nu_b",        type=float, default=None, help="Override workpiece nu")
-    parser.add_argument("--sigma_yield", type=float, default=None, help="Override workpiece sigma_yield (Pa); disables sy_range sweep")
-    parser.add_argument("--c",           type=float, default=None, help="Override workpiece hardening c (Pa)")
-    parser.add_argument("--E_s",         type=float, default=None, help="Override shot E (Pa)")
-    parser.add_argument("--nu_s",        type=float, default=None, help="Override shot nu")
-    parser.add_argument("--rho_s",       type=float, default=None, help="Override shot density (kg/m³)")
+    parser.add_argument(
+        "--workpiece_material",
+        default="",
+        choices=[""] + sorted(WORKPIECE_MATERIALS) + ["custom"],
+        metavar="NAME",
+        help=(
+            "Named workpiece material from library "
+            f"({', '.join(sorted(WORKPIECE_MATERIALS))}) "
+            "or 'custom' to use --E_b/--nu_b/etc. overrides. "
+            "Default: ShotPeenParams built-in values."
+        ),
+    )
+    parser.add_argument(
+        "--shot_material",
+        default="",
+        choices=[""] + sorted(SHOT_MATERIALS) + ["custom"],
+        metavar="NAME",
+        help=(
+            "Named shot material from library "
+            f"({', '.join(sorted(SHOT_MATERIALS))}) "
+            "or 'custom'. Default: ShotPeenParams built-in values."
+        ),
+    )
+    parser.add_argument("--E_b", type=float, default=None, help="Override workpiece E (Pa)")
+    parser.add_argument("--nu_b", type=float, default=None, help="Override workpiece nu")
+    parser.add_argument(
+        "--sigma_yield", type=float, default=None, help="Override workpiece sigma_yield (Pa); disables sy_range sweep"
+    )
+    parser.add_argument("--c", type=float, default=None, help="Override workpiece hardening c (Pa)")
+    parser.add_argument("--E_s", type=float, default=None, help="Override shot E (Pa)")
+    parser.add_argument("--nu_s", type=float, default=None, help="Override shot nu")
+    parser.add_argument("--rho_s", type=float, default=None, help="Override shot density (kg/m³)")
 
     args = parser.parse_args()
 
@@ -810,8 +852,10 @@ if __name__ == "__main__":
         n_simulations=args.n_sims,
         start_index=args.start,
         workers=args.workers,
-        Nx=args.Nx, Ny=args.Ny,
-        Lx=args.Lx, Ly=args.Ly,
+        Nx=args.Nx,
+        Ny=args.Ny,
+        Lx=args.Lx,
+        Ly=args.Ly,
         base_seed=args.seed,
         V_range=(args.V_min, args.V_max),
         D_range=(args.D_min, args.D_max),
@@ -819,8 +863,13 @@ if __name__ == "__main__":
         checkerboard_size=args.grid_size,
         workpiece_material=args.workpiece_material,
         shot_material=args.shot_material,
-        E_b=args.E_b, nu_b=args.nu_b, sigma_yield=args.sigma_yield, c=args.c,
-        E_s=args.E_s, nu_s=args.nu_s, rho_s=args.rho_s,
+        E_b=args.E_b,
+        nu_b=args.nu_b,
+        sigma_yield=args.sigma_yield,
+        c=args.c,
+        E_s=args.E_s,
+        nu_s=args.nu_s,
+        rho_s=args.rho_s,
     )
 
     generate_dataset(gp, verbose=True)

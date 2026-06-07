@@ -9,6 +9,7 @@ Provides:
   shuffled_labels_sim_folder — same but disp labels shuffled for alignment tests
   tk_root               — hidden Tk window, destroyed after each test
 """
+
 import os
 import sys
 import numpy as np
@@ -38,16 +39,14 @@ def tiny_dataset(tmp_path_factory):
     Session-scoped so the folder is created once and reused across all tests.
     """
     root = tmp_path_factory.mktemp("tiny_ds")
-    rng  = np.random.default_rng(42)
+    rng = np.random.default_rng(42)
     coords = make_node_coords(SYN_NODES)
 
     for i in range(SYN_SIMS):
         sim = root / f"Simulation_{i}"
         sim.mkdir()
-        np.save(sim / "checkerboard.npy",
-                rng.random((SYN_G, SYN_G)).astype(np.float32))
-        np.save(sim / "displacements.npy",
-                rng.random((SYN_NODES, 3)).astype(np.float32))
+        np.save(sim / "checkerboard.npy", rng.random((SYN_G, SYN_G)).astype(np.float32))
+        np.save(sim / "displacements.npy", rng.random((SYN_NODES, 3)).astype(np.float32))
         np.save(sim / "node_coords.npy", coords)
 
     return root  # pathlib.Path
@@ -60,15 +59,13 @@ def mismatched_sim(tmp_path_factory):
     with tiny_dataset models (G=5, N=100) to exercise interpolation paths.
     196 = 14x14 (perfect square, avoids fractional-grid issues).
     """
-    root   = tmp_path_factory.mktemp("mismatch_ds")
-    rng    = np.random.default_rng(7)
+    root = tmp_path_factory.mktemp("mismatch_ds")
+    rng = np.random.default_rng(7)
     coords = make_node_coords(196)
-    sim    = root / "Simulation_0"
+    sim = root / "Simulation_0"
     sim.mkdir()
-    np.save(sim / "checkerboard.npy",
-            rng.random((20, 20)).astype(np.float32))
-    np.save(sim / "displacements.npy",
-            rng.random((196, 3)).astype(np.float32))
+    np.save(sim / "checkerboard.npy", rng.random((20, 20)).astype(np.float32))
+    np.save(sim / "displacements.npy", rng.random((196, 3)).astype(np.float32))
     np.save(sim / "node_coords.npy", coords)
     return root
 
@@ -80,6 +77,7 @@ def trained_model_bundle(tiny_dataset):
     Session-scoped so training only happens once regardless of how many tests use it.
     """
     from model import train_save_gui
+
     train_save_gui(str(tiny_dataset))
     return tiny_dataset / "saved_model", tiny_dataset
 
@@ -87,22 +85,27 @@ def trained_model_bundle(tiny_dataset):
 def _write_sim_folder(path, rng, n=10, grid=5, shuffle_disp_labels=False):
     """Write synthetic simulation files into *path* and return metadata."""
     node_labels = np.arange(1, n + 1, dtype=np.int32)
-    node_coords = np.column_stack([
-        np.linspace(0, 0.01, n, dtype=np.float32),
-        np.linspace(0, 0.01, n, dtype=np.float32),
-        np.zeros(n, dtype=np.float32),
-    ])
+    node_coords = np.column_stack(
+        [
+            np.linspace(0, 0.01, n, dtype=np.float32),
+            np.linspace(0, 0.01, n, dtype=np.float32),
+            np.zeros(n, dtype=np.float32),
+        ]
+    )
     displacements = rng.random((n, 3)).astype(np.float32) * 1e-4
     disp_node_labels = node_labels.copy()
     if shuffle_disp_labels:
         rng.shuffle(disp_node_labels)
 
-    element_connectivity = np.array([
-        [1, 2, 3, 4],
-        [3, 4, 5, 6],
-        [5, 6, 7, 8],
-        [7, 8, 9, 10],
-    ], dtype=np.int32)
+    element_connectivity = np.array(
+        [
+            [1, 2, 3, 4],
+            [3, 4, 5, 6],
+            [5, 6, 7, 8],
+            [7, 8, 9, 10],
+        ],
+        dtype=np.int32,
+    )
     element_labels = np.array([101, 102, 103, 104], dtype=np.int32)
     stresses = rng.random((4, 6)).astype(np.float32)
 
@@ -149,6 +152,7 @@ def tk_root():
     """Hidden Tk root window; destroyed after each test automatically.
     Skips automatically in headless CI environments (no $DISPLAY on Linux)."""
     import tkinter as tk
+
     try:
         root = tk.Tk()
     except tk.TclError:

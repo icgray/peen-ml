@@ -57,6 +57,7 @@ traj   = raster_scan(ScanParams(Lx=0.04, Ly=0.04, z_standoff=0.15,
 params = CurvedSurfaceSimParams(stl_path="panel.stl", trajectory=traj)
 results = run_curved_surface_sim(params)
 """
+
 from __future__ import annotations
 
 import math
@@ -132,6 +133,7 @@ class CurvedSurfaceSimParams:
     verbose    : Print progress.
     seed       : RNG seed.
     """
+
     # Surface
     stl_path: Optional[str] = None
 
@@ -139,25 +141,25 @@ class CurvedSurfaceSimParams:
     trajectory: Optional[NozzleTrajectory] = None
 
     # Nozzle / shot physics
-    h_nozzle:          float = 0.150
-    theta_div:         float = math.radians(15.0)
-    V_mean:            float = 50.0
-    sigma_V_frac:      float = 0.10
-    V_exit_min:        float = 5.0
-    n_shots_per_step:  int   = 10
-    D:                 float = 0.0005
-    shot_material:     str   = "steel"
-    sigma_yield:       float = 276e6
-    E_b:               float = 113.8e9
-    nu_b:              float = 0.34
-    c:                 float = 3.0e9
+    h_nozzle: float = 0.150
+    theta_div: float = math.radians(15.0)
+    V_mean: float = 50.0
+    sigma_V_frac: float = 0.10
+    V_exit_min: float = 5.0
+    n_shots_per_step: int = 10
+    D: float = 0.0005
+    shot_material: str = "steel"
+    sigma_yield: float = 276e6
+    E_b: float = 113.8e9
+    nu_b: float = 0.34
+    c: float = 3.0e9
 
     # Output
-    G:          int  = 20
-    output_dir: str  = "./curved_output"
-    save_npy:   bool = True
-    verbose:    bool = True
-    seed:       int  = 42
+    G: int = 20
+    output_dir: str = "./curved_output"
+    save_npy: bool = True
+    verbose: bool = True
+    seed: int = 42
 
 
 def run_curved_surface_sim(params: CurvedSurfaceSimParams) -> Dict:
@@ -187,23 +189,28 @@ def run_curved_surface_sim(params: CurvedSurfaceSimParams) -> Dict:
     if params.stl_path is None:
         _log("[CurvedSurfaceSim] No STL provided — running flat-plate simulation.")
         mat = SHOT_MATERIALS.get(params.shot_material, SHOT_MATERIALS["steel"])
-        n_total = params.n_shots_per_step * (
-            params.trajectory.n_steps if params.trajectory else 1
-        )
+        n_total = params.n_shots_per_step * (params.trajectory.n_steps if params.trajectory else 1)
         ms_params = MultiShotParams(
             base_params=ShotPeenParams(
-                V=params.V_mean, D=params.D,
+                V=params.V_mean,
+                D=params.D,
                 sigma_yield=params.sigma_yield,
-                E_b=params.E_b, nu_b=params.nu_b, c=params.c,
-                E_s=mat["E_s"], nu_s=mat["nu_s"], rho_s=mat["rho_s"],
+                E_b=params.E_b,
+                nu_b=params.nu_b,
+                c=params.c,
+                E_s=mat["E_s"],
+                nu_s=mat["nu_s"],
+                rho_s=mat["rho_s"],
             ),
             n_shots=n_total,
             distribution="random",
             seed=params.seed,
         )
         result = run_multi_shot_simulation(
-            ms_params, output_dir=params.output_dir,
-            save_npy=params.save_npy, verbose=params.verbose,
+            ms_params,
+            output_dir=params.output_dir,
+            save_npy=params.save_npy,
+            verbose=params.verbose,
             grid_size=params.G,
         )
         result["stl_surface"] = None
@@ -217,38 +224,43 @@ def run_curved_surface_sim(params: CurvedSurfaceSimParams) -> Dict:
     _log(f"  {surface.n_vertices} vertices, {surface.n_faces} faces")
 
     node_coords, node_labels = surface.to_node_arrays()
-    elem_conn,   elem_labels = surface.to_element_arrays()
-    N_nodes  = surface.n_vertices
-    N_elems  = surface.n_faces
+    elem_conn, elem_labels = surface.to_element_arrays()
+    N_nodes = surface.n_vertices
+    N_elems = surface.n_faces
 
     # Surface bounding box (for Gaussian nozzle placement)
-    bounds   = surface.bounds()
-    x_min    = float(bounds[0, 0])
-    y_min    = float(bounds[0, 1])
-    Lx       = max(float(bounds[1, 0]) - x_min, 1e-9)
-    Ly       = max(float(bounds[1, 1]) - y_min, 1e-9)
+    bounds = surface.bounds()
+    x_min = float(bounds[0, 0])
+    y_min = float(bounds[0, 1])
+    Lx = max(float(bounds[1, 0]) - x_min, 1e-9)
+    Ly = max(float(bounds[1, 1]) - y_min, 1e-9)
 
     # ------------------------------------------------------------------
     # Material / shot shared base params
     # ------------------------------------------------------------------
     mat = SHOT_MATERIALS.get(params.shot_material, SHOT_MATERIALS["steel"])
     base_sp = ShotPeenParams(
-        E_s=mat["E_s"], nu_s=mat["nu_s"], rho_s=mat["rho_s"],
-        D=params.D, V=params.V_mean,
-        E_b=params.E_b, nu_b=params.nu_b,
-        sigma_yield=params.sigma_yield, c=params.c,
+        E_s=mat["E_s"],
+        nu_s=mat["nu_s"],
+        rho_s=mat["rho_s"],
+        D=params.D,
+        V=params.V_mean,
+        E_b=params.E_b,
+        nu_b=params.nu_b,
+        sigma_yield=params.sigma_yield,
+        c=params.c,
     )
 
-    rng      = np.random.default_rng(params.seed)
-    sigma_V  = params.V_mean * params.sigma_V_frac
+    rng = np.random.default_rng(params.seed)
+    sigma_V = params.V_mean * params.sigma_V_frac
 
     # Mesh dict expected by map_displacements / map_stresses
     mesh_dict = {
-        "node_labels":          node_labels,
-        "node_coords":          node_coords,
-        "element_labels":       elem_labels,
+        "node_labels": node_labels,
+        "node_coords": node_coords,
+        "element_labels": elem_labels,
         "element_connectivity": elem_conn,
-        "impact_center":        np.array([0.0, 0.0, 0.0]),
+        "impact_center": np.array([0.0, 0.0, 0.0]),
     }
 
     # ------------------------------------------------------------------
@@ -259,9 +271,7 @@ def run_curved_surface_sim(params: CurvedSurfaceSimParams) -> Dict:
     else:
         cx = x_min + Lx / 2.0
         cy = y_min + Ly / 2.0
-        nozzle_positions = np.array(
-            [[cx, cy, params.h_nozzle]], dtype=np.float32
-        )
+        nozzle_positions = np.array([[cx, cy, params.h_nozzle]], dtype=np.float32)
 
     T = len(nozzle_positions)
     _log(
@@ -273,12 +283,12 @@ def run_curved_surface_sim(params: CurvedSurfaceSimParams) -> Dict:
     # ------------------------------------------------------------------
     # Accumulation arrays
     # ------------------------------------------------------------------
-    disp_total   = np.zeros((N_nodes, 3), dtype=np.float64)
+    disp_total = np.zeros((N_nodes, 3), dtype=np.float64)
     stress_total = np.zeros((N_elems, 4), dtype=np.float64)
     all_shot_xyz: List[np.ndarray] = []
     all_V_normal: List[np.ndarray] = []
-    sR_profiles:  List[np.ndarray] = []
-    processed     = 0
+    sR_profiles: List[np.ndarray] = []
+    processed = 0
 
     _log("[CurvedSurfaceSim] Simulating impacts ...")
 
@@ -293,7 +303,8 @@ def run_curved_surface_sim(params: CurvedSurfaceSimParams) -> Dict:
             V_mean=params.V_mean,
             sigma_V=sigma_V,
             n_shots=params.n_shots_per_step,
-            Lx=Lx, Ly=Ly,
+            Lx=Lx,
+            Ly=Ly,
             nozzle_x=nx - x_min,
             nozzle_y=ny - y_min,
             V_exit_min=params.V_exit_min,
@@ -306,9 +317,7 @@ def run_curved_surface_sim(params: CurvedSurfaceSimParams) -> Dict:
         shot_xy_global[:, 1] += y_min
 
         # Project onto STL surface (orthographic XY snap)
-        hit_xyz, surf_normals, impact_angles = surface.project_shots_onto_surface(
-            shot_xy_global, z_nozzle=nz
-        )
+        hit_xyz, surf_normals, impact_angles = surface.project_shots_onto_surface(shot_xy_global, z_nozzle=nz)
 
         all_shot_xyz.append(hit_xyz)
         all_V_normal.append(V_norm)
@@ -320,25 +329,29 @@ def run_curved_surface_sim(params: CurvedSurfaceSimParams) -> Dict:
             V_n_i = max(V_n_i, params.V_exit_min)
 
             p_i = ShotPeenParams(
-                E_s=mat["E_s"], nu_s=mat["nu_s"], rho_s=mat["rho_s"],
+                E_s=mat["E_s"],
+                nu_s=mat["nu_s"],
+                rho_s=mat["rho_s"],
                 D=params.D,
                 V=V_n_i,
-                phi=math.pi / 2.0,   # normal component already applied above
-                E_b=params.E_b, nu_b=params.nu_b,
-                sigma_yield=params.sigma_yield, c=params.c,
-                n_depth=1000,        # coarser for speed
+                phi=math.pi / 2.0,  # normal component already applied above
+                E_b=params.E_b,
+                nu_b=params.nu_b,
+                sigma_yield=params.sigma_yield,
+                c=params.c,
+                n_depth=1000,  # coarser for speed
             )
 
             contact_i = compute_contact_params(p_i)
             plastic_i = compute_plastic_zone(p_i)
-            sf_i      = compute_stress_field(contact_i, p_i)
+            sf_i = compute_stress_field(contact_i, p_i)
 
             ic = hit_xyz[i].astype(np.float64)
 
-            _, disp_i   = map_displacements(mesh_dict, contact_i, plastic_i, p_i, ic)
+            _, disp_i = map_displacements(mesh_dict, contact_i, plastic_i, p_i, ic)
             _, stress_i = map_stresses(mesh_dict, sf_i, plastic_i, p_i, ic)
 
-            disp_total   += disp_i.astype(np.float64)
+            disp_total += disp_i.astype(np.float64)
             stress_total += stress_i.astype(np.float64)
             sR_profiles.append(np.stack([sf_i["Z"], sf_i["sR"]], axis=1))
 
@@ -347,7 +360,7 @@ def run_curved_surface_sim(params: CurvedSurfaceSimParams) -> Dict:
         if params.verbose and T > 1 and (t_idx + 1) % max(1, T // 10) == 0:
             _log(f"  Step {t_idx + 1}/{T} — {processed} impacts processed ...")
 
-    disp_f32   = disp_total.astype(np.float32)
+    disp_f32 = disp_total.astype(np.float32)
     stress_f32 = stress_total.astype(np.float32)
 
     # ------------------------------------------------------------------
@@ -359,34 +372,35 @@ def run_curved_surface_sim(params: CurvedSurfaceSimParams) -> Dict:
     # ------------------------------------------------------------------
     # Checkerboard: energy-weighted XY projection
     # ------------------------------------------------------------------
-    checkerboard = surface.shots_to_checkerboard(
-        all_shot_xyz_np, all_V_normal_np ** 2, params.G
-    )
+    checkerboard = surface.shots_to_checkerboard(all_shot_xyz_np, all_V_normal_np**2, params.G)
 
     # ------------------------------------------------------------------
     # Mean residual stress depth profile
     # ------------------------------------------------------------------
     if sR_profiles:
-        min_len  = min(p.shape[0] for p in sR_profiles)
+        min_len = min(p.shape[0] for p in sR_profiles)
         sR_stack = np.stack([p[:min_len] for p in sR_profiles])
-        sR_mean  = sR_stack.mean(axis=0)
+        sR_mean = sR_stack.mean(axis=0)
     else:
         sR_mean = np.zeros((10, 2), dtype=np.float32)
 
     # ------------------------------------------------------------------
     # Coverage and Almen intensity
     # ------------------------------------------------------------------
-    contact0      = compute_contact_params(base_sp)
-    plastic0      = compute_plastic_zone(base_sp)
+    contact0 = compute_contact_params(base_sp)
+    plastic0 = compute_plastic_zone(base_sp)
     coverage_info = compute_coverage(
-        disp_f32, plastic0, node_coords, Lx, Ly,
+        disp_f32,
+        plastic0,
+        node_coords,
+        Lx,
+        Ly,
         centres=all_shot_xyz_np[:, :2],
     )
     almen_MPa = float(np.min(stress_f32[:, 0]) / 1e6)
 
     _log(
-        f"[CurvedSurfaceSim] Coverage: {coverage_info['coverage_percent']:.1f}% | "
-        f"Almen proxy: {almen_MPa:.1f} MPa"
+        f"[CurvedSurfaceSim] Coverage: {coverage_info['coverage_percent']:.1f}% | " f"Almen proxy: {almen_MPa:.1f} MPa"
     )
 
     # ------------------------------------------------------------------
@@ -394,19 +408,19 @@ def run_curved_surface_sim(params: CurvedSurfaceSimParams) -> Dict:
     # ------------------------------------------------------------------
     if params.save_npy:
         os.makedirs(params.output_dir, exist_ok=True)
-        np.save(os.path.join(params.output_dir, "node_coords.npy"),           node_coords)
-        np.save(os.path.join(params.output_dir, "node_labels.npy"),           node_labels)
-        np.save(os.path.join(params.output_dir, "element_connectivity.npy"),  elem_conn)
-        np.save(os.path.join(params.output_dir, "element_labels.npy"),        elem_labels)
-        np.save(os.path.join(params.output_dir, "displacements.npy"),         disp_f32)
-        np.save(os.path.join(params.output_dir, "disp_node_labels.npy"),      node_labels)
-        np.save(os.path.join(params.output_dir, "stresses.npy"),              stress_f32)
+        np.save(os.path.join(params.output_dir, "node_coords.npy"), node_coords)
+        np.save(os.path.join(params.output_dir, "node_labels.npy"), node_labels)
+        np.save(os.path.join(params.output_dir, "element_connectivity.npy"), elem_conn)
+        np.save(os.path.join(params.output_dir, "element_labels.npy"), elem_labels)
+        np.save(os.path.join(params.output_dir, "displacements.npy"), disp_f32)
+        np.save(os.path.join(params.output_dir, "disp_node_labels.npy"), node_labels)
+        np.save(os.path.join(params.output_dir, "stresses.npy"), stress_f32)
         np.save(os.path.join(params.output_dir, "stress_element_labels.npy"), elem_labels)
-        np.save(os.path.join(params.output_dir, "sR_depth_profile.npy"),      sR_mean)
-        np.save(os.path.join(params.output_dir, "shot_positions.npy"),        all_shot_xyz_np[:, :2])
-        np.save(os.path.join(params.output_dir, "checkerboard.npy"),          checkerboard)
-        np.save(os.path.join(params.output_dir, "stl_vertex_normals.npy"),    surface.vertex_normals)
-        np.save(os.path.join(params.output_dir, "stl_face_normals.npy"),      surface.face_normals)
+        np.save(os.path.join(params.output_dir, "sR_depth_profile.npy"), sR_mean)
+        np.save(os.path.join(params.output_dir, "shot_positions.npy"), all_shot_xyz_np[:, :2])
+        np.save(os.path.join(params.output_dir, "checkerboard.npy"), checkerboard)
+        np.save(os.path.join(params.output_dir, "stl_vertex_normals.npy"), surface.vertex_normals)
+        np.save(os.path.join(params.output_dir, "stl_face_normals.npy"), surface.face_normals)
 
         with open(os.path.join(params.output_dir, "coverage_report.txt"), "w") as fh:
             fh.write(f"n_total_impacts: {processed}\n")
@@ -420,18 +434,18 @@ def run_curved_surface_sim(params: CurvedSurfaceSimParams) -> Dict:
         _log(f"[CurvedSurfaceSim] Results saved to: {params.output_dir}")
 
     return {
-        "node_coords":          node_coords,
-        "node_labels":          node_labels,
+        "node_coords": node_coords,
+        "node_labels": node_labels,
         "element_connectivity": elem_conn,
-        "element_labels":       elem_labels,
-        "displacements":        disp_f32,
-        "stresses":             stress_f32,
-        "sR_depth_profile":     sR_mean,
-        "shot_positions_all":   all_shot_xyz_np,
-        "V_normal_all":         all_V_normal_np,
-        "checkerboard":         checkerboard,
-        "coverage":             coverage_info,
-        "coverage_fraction":    coverage_info["coverage_fraction"],
-        "almen_intensity_MPa":  almen_MPa,
-        "stl_surface":          surface,
+        "element_labels": elem_labels,
+        "displacements": disp_f32,
+        "stresses": stress_f32,
+        "sR_depth_profile": sR_mean,
+        "shot_positions_all": all_shot_xyz_np,
+        "V_normal_all": all_V_normal_np,
+        "checkerboard": checkerboard,
+        "coverage": coverage_info,
+        "coverage_fraction": coverage_info["coverage_fraction"],
+        "almen_intensity_MPa": almen_MPa,
+        "stl_surface": surface,
     }

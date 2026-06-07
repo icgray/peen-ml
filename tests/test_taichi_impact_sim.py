@@ -42,7 +42,8 @@ if _SRC not in sys.path:
 # Check taichi availability
 # ---------------------------------------------------------------------------
 try:
-    import taichi as ti                         # noqa: F401
+    import taichi as ti  # noqa: F401
+
     _TAICHI_OK = True
 except ImportError:
     _TAICHI_OK = False
@@ -69,6 +70,7 @@ from taichi_impact_sim import (
 # Tiny simulation fixture (requires taichi)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="module")
 def tiny_solver():
     """Create and run a minimal MPM solver for quick functional tests."""
@@ -77,7 +79,9 @@ def tiny_solver():
     p = ShotPeenParams()
     solver = MPMShotPeenSolver(
         params=p,
-        Lx=0.002, Ly=0.002, Lz=0.001,
+        Lx=0.002,
+        Ly=0.002,
+        Lz=0.001,
         n_grid=8,
         ppc=1,
         arch="cpu",
@@ -99,6 +103,7 @@ def tiny_results(tiny_solver):
 # Class 1: Module-level attributes and import
 # ---------------------------------------------------------------------------
 
+
 class TestModuleImport:
 
     def test_taichi_available_flag_is_bool(self):
@@ -119,6 +124,7 @@ class TestModuleImport:
 
     def test_module_docstring_present(self):
         import taichi_impact_sim
+
         assert taichi_impact_sim.__doc__ is not None
         assert "MLS-MPM" in taichi_impact_sim.__doc__
 
@@ -130,6 +136,7 @@ class TestModuleImport:
 # ---------------------------------------------------------------------------
 # Class 2: ShotPeenParams (same as test_impact_sim but re-confirmed here)
 # ---------------------------------------------------------------------------
+
 
 class TestShotPeenParamsInMPM:
 
@@ -153,93 +160,71 @@ class TestShotPeenParamsInMPM:
 # Class 3: MPMShotPeenSolver construction (requires_taichi)
 # ---------------------------------------------------------------------------
 
+
 class TestMPMSolverConstruction:
 
     @requires_taichi
     def test_creates_without_error(self):
         p = ShotPeenParams()
-        solver = MPMShotPeenSolver(
-            params=p, Lx=0.002, Ly=0.002, Lz=0.001,
-            n_grid=6, ppc=1, arch="cpu", verbose=False
-        )
+        solver = MPMShotPeenSolver(params=p, Lx=0.002, Ly=0.002, Lz=0.001, n_grid=6, ppc=1, arch="cpu", verbose=False)
         assert solver is not None
 
     @requires_taichi
     def test_dx_positive(self):
-        solver = MPMShotPeenSolver(
-            params=ShotPeenParams(), n_grid=8, ppc=1, arch="cpu", verbose=False
-        )
+        solver = MPMShotPeenSolver(params=ShotPeenParams(), n_grid=8, ppc=1, arch="cpu", verbose=False)
         assert solver.dx > 0
 
     @requires_taichi
     def test_dt_positive(self):
-        solver = MPMShotPeenSolver(
-            params=ShotPeenParams(), n_grid=8, ppc=1, arch="cpu", verbose=False
-        )
+        solver = MPMShotPeenSolver(params=ShotPeenParams(), n_grid=8, ppc=1, arch="cpu", verbose=False)
         assert solver.dt > 0
 
     @requires_taichi
     def test_dt_satisfies_CFL(self):
         """dt should be ≤ dx / c_p for stability."""
-        solver = MPMShotPeenSolver(
-            params=ShotPeenParams(), n_grid=8, ppc=1, arch="cpu", verbose=False
-        )
+        solver = MPMShotPeenSolver(params=ShotPeenParams(), n_grid=8, ppc=1, arch="cpu", verbose=False)
         c_p = math.sqrt((solver.la + 2.0 * solver.mu) / solver.rho_target)
         assert solver.dt <= solver.dx / c_p
 
     @requires_taichi
     def test_n_particles_positive(self):
-        solver = MPMShotPeenSolver(
-            params=ShotPeenParams(), n_grid=8, ppc=1, arch="cpu", verbose=False
-        )
+        solver = MPMShotPeenSolver(params=ShotPeenParams(), n_grid=8, ppc=1, arch="cpu", verbose=False)
         assert solver.n_particles > 0
 
     @requires_taichi
     def test_grid_dimensions_positive(self):
-        solver = MPMShotPeenSolver(
-            params=ShotPeenParams(), n_grid=8, ppc=1, arch="cpu", verbose=False
-        )
+        solver = MPMShotPeenSolver(params=ShotPeenParams(), n_grid=8, ppc=1, arch="cpu", verbose=False)
         assert solver.nx > 0
         assert solver.ny > 0
         assert solver.nz > 0
 
     @requires_taichi
     def test_mu_positive(self):
-        solver = MPMShotPeenSolver(
-            params=ShotPeenParams(), n_grid=6, ppc=1, arch="cpu", verbose=False
-        )
+        solver = MPMShotPeenSolver(params=ShotPeenParams(), n_grid=6, ppc=1, arch="cpu", verbose=False)
         assert solver.mu > 0
 
     @requires_taichi
     def test_la_positive(self):
-        solver = MPMShotPeenSolver(
-            params=ShotPeenParams(), n_grid=6, ppc=1, arch="cpu", verbose=False
-        )
+        solver = MPMShotPeenSolver(params=ShotPeenParams(), n_grid=6, ppc=1, arch="cpu", verbose=False)
         assert solver.la > 0
 
     @requires_taichi
     def test_hardening_slope_relationship(self):
         """H should equal (3/2)*c to match Shen & Atluri parameterisation."""
         p = ShotPeenParams(c=3.0e9)
-        solver = MPMShotPeenSolver(
-            params=p, n_grid=6, ppc=1, arch="cpu", verbose=False
-        )
+        solver = MPMShotPeenSolver(params=p, n_grid=6, ppc=1, arch="cpu", verbose=False)
         assert solver.H_hard == pytest.approx(1.5 * p.c, rel=1e-9)
 
     @requires_taichi
     def test_shot_initial_position_above_surface(self):
         """Shot centre must start above the target surface (z > 0)."""
-        solver = MPMShotPeenSolver(
-            params=ShotPeenParams(), n_grid=6, ppc=1, arch="cpu", verbose=False
-        )
+        solver = MPMShotPeenSolver(params=ShotPeenParams(), n_grid=6, ppc=1, arch="cpu", verbose=False)
         assert solver.shot_center[2] > 0
 
     @requires_taichi
     def test_shot_initial_velocity_negative_z(self):
         """Shot initial velocity must point toward the surface (−z)."""
-        solver = MPMShotPeenSolver(
-            params=ShotPeenParams(), n_grid=6, ppc=1, arch="cpu", verbose=False
-        )
+        solver = MPMShotPeenSolver(params=ShotPeenParams(), n_grid=6, ppc=1, arch="cpu", verbose=False)
         assert solver.shot_vel[2] < 0
 
     @requires_taichi
@@ -251,22 +236,19 @@ class TestMPMSolverConstruction:
 
     @requires_taichi
     def test_p_mass_val_positive(self):
-        solver = MPMShotPeenSolver(
-            params=ShotPeenParams(), n_grid=6, ppc=1, arch="cpu", verbose=False
-        )
+        solver = MPMShotPeenSolver(params=ShotPeenParams(), n_grid=6, ppc=1, arch="cpu", verbose=False)
         assert solver.p_mass_val > 0
 
     @requires_taichi
     def test_p_vol_positive(self):
-        solver = MPMShotPeenSolver(
-            params=ShotPeenParams(), n_grid=6, ppc=1, arch="cpu", verbose=False
-        )
+        solver = MPMShotPeenSolver(params=ShotPeenParams(), n_grid=6, ppc=1, arch="cpu", verbose=False)
         assert solver.p_vol > 0
 
 
 # ---------------------------------------------------------------------------
 # Class 4: Initialization
 # ---------------------------------------------------------------------------
+
 
 class TestMPMInitialization:
 
@@ -285,10 +267,7 @@ class TestMPMInitialization:
     def test_particle_velocities_zero_initially(self):
         """After initialize() only (no run), particles should have zero velocity."""
         p = ShotPeenParams()
-        solver = MPMShotPeenSolver(
-            params=p, Lx=0.002, Ly=0.002, Lz=0.001,
-            n_grid=6, ppc=1, arch="cpu", verbose=False
-        )
+        solver = MPMShotPeenSolver(params=p, Lx=0.002, Ly=0.002, Lz=0.001, n_grid=6, ppc=1, arch="cpu", verbose=False)
         solver.initialize()
         v_np = solver.v.to_numpy()
         np.testing.assert_allclose(v_np, 0.0, atol=1e-30)
@@ -296,12 +275,9 @@ class TestMPMInitialization:
     @requires_taichi
     def test_deformation_gradient_identity_initially(self):
         p = ShotPeenParams()
-        solver = MPMShotPeenSolver(
-            params=p, Lx=0.002, Ly=0.002, Lz=0.001,
-            n_grid=6, ppc=1, arch="cpu", verbose=False
-        )
+        solver = MPMShotPeenSolver(params=p, Lx=0.002, Ly=0.002, Lz=0.001, n_grid=6, ppc=1, arch="cpu", verbose=False)
         solver.initialize()
-        F_np = solver.F.to_numpy()   # (N, 3, 3)
+        F_np = solver.F.to_numpy()  # (N, 3, 3)
         eye3 = np.eye(3)
         for f in F_np[:10]:
             np.testing.assert_allclose(f, eye3, atol=1e-6)
@@ -309,10 +285,7 @@ class TestMPMInitialization:
     @requires_taichi
     def test_plastic_strain_zero_initially(self):
         p = ShotPeenParams()
-        solver = MPMShotPeenSolver(
-            params=p, Lx=0.002, Ly=0.002, Lz=0.001,
-            n_grid=6, ppc=1, arch="cpu", verbose=False
-        )
+        solver = MPMShotPeenSolver(params=p, Lx=0.002, Ly=0.002, Lz=0.001, n_grid=6, ppc=1, arch="cpu", verbose=False)
         solver.initialize()
         Jp_np = solver.Jp.to_numpy()
         np.testing.assert_allclose(Jp_np, 0.0, atol=1e-30)
@@ -321,6 +294,7 @@ class TestMPMInitialization:
 # ---------------------------------------------------------------------------
 # Class 5: After a short run
 # ---------------------------------------------------------------------------
+
 
 class TestMPMAfterRun:
 
@@ -376,15 +350,24 @@ class TestMPMAfterRun:
 # Class 6: extract_results output schema
 # ---------------------------------------------------------------------------
 
+
 class TestExtractResults:
 
     @requires_taichi
     def test_required_keys(self, tiny_results):
         required = {
-            "node_labels", "node_coords", "element_labels",
-            "element_connectivity", "disp_node_labels", "displacements",
-            "stress_elem_labels", "stresses", "energy",
-            "time_hist", "ke_target_hist", "ke_shot_hist",
+            "node_labels",
+            "node_coords",
+            "element_labels",
+            "element_connectivity",
+            "disp_node_labels",
+            "displacements",
+            "stress_elem_labels",
+            "stresses",
+            "energy",
+            "time_hist",
+            "ke_target_hist",
+            "ke_shot_hist",
         }
         assert required.issubset(tiny_results.keys())
 
@@ -415,7 +398,7 @@ class TestExtractResults:
     @requires_taichi
     def test_KE_initial_matches_formula(self, tiny_results):
         p = ShotPeenParams()
-        expected = 0.5 * p.Ms * p.V ** 2
+        expected = 0.5 * p.Ms * p.V**2
         assert tiny_results["energy"]["KE_initial"] == pytest.approx(expected, rel=1e-6)
 
     @requires_taichi
@@ -428,17 +411,19 @@ class TestExtractResults:
         with tempfile.TemporaryDirectory() as tmpdir:
             tiny_solver.extract_results(output_dir=tmpdir, Nx_out=3, Ny_out=3)
             for fname in [
-                "node_labels.npy", "node_coords.npy", "displacements.npy",
-                "stresses.npy", "sR_depth_profile.npy", "energy_balance.txt",
+                "node_labels.npy",
+                "node_coords.npy",
+                "displacements.npy",
+                "stresses.npy",
+                "sR_depth_profile.npy",
+                "energy_balance.txt",
             ]:
                 assert os.path.exists(os.path.join(tmpdir, fname)), f"Missing: {fname}"
 
     @requires_taichi
     def test_no_npy_if_save_false(self, tiny_solver):
         with tempfile.TemporaryDirectory() as tmpdir:
-            tiny_solver.extract_results(
-                output_dir=tmpdir, Nx_out=3, Ny_out=3, save_npy=False
-            )
+            tiny_solver.extract_results(output_dir=tmpdir, Nx_out=3, Ny_out=3, save_npy=False)
             npy_files = [f for f in os.listdir(tmpdir) if f.endswith(".npy")]
             assert len(npy_files) == 0
 
@@ -464,20 +449,24 @@ class TestExtractResults:
 # Class 7: compare_results (pure Python, no taichi required)
 # ---------------------------------------------------------------------------
 
+
 class TestCompareResults:
 
     def _make_mock_mpm_results(self):
         Z = np.linspace(1e-5, 8e-4, 100)
         return {
-            "sR_depth_profile":  np.stack([Z, -50e6 * np.exp(-Z / 2e-4)], axis=1),
+            "sR_depth_profile": np.stack([Z, -50e6 * np.exp(-Z / 2e-4)], axis=1),
             "eps_depth_profile": np.stack([Z, 0.001 * np.exp(-Z / 1e-4)], axis=1),
             "energy": {
-                "KE_initial": 84e-6, "W_plastic": 60e-6,
-                "KE_rebound": 24e-6, "COR": 0.534, "e": 0.534,
+                "KE_initial": 84e-6,
+                "W_plastic": 60e-6,
+                "KE_rebound": 24e-6,
+                "COR": 0.534,
+                "e": 0.534,
             },
-            "time_hist":      np.linspace(0, 200e-9, 20),
+            "time_hist": np.linspace(0, 200e-9, 20),
             "ke_target_hist": np.linspace(0, 30e-6, 20),
-            "ke_shot_hist":   np.linspace(84e-6, 24e-6, 20),
+            "ke_shot_hist": np.linspace(84e-6, 24e-6, 20),
             "shot_vel_z_hist": np.linspace(-35.9, 19.1, 20).tolist(),
         }
 
@@ -485,36 +474,40 @@ class TestCompareResults:
         Z = np.linspace(1e-5, 8e-4, 300)
         return {
             "stress_field": {
-                "Z":         Z,
-                "Z_bar":     Z / 37e-6,
-                "sR":        -90e6 * np.exp(-Z / 1e-4) * (Z < 4e-4),
-                "eps_avg":   0.002 * np.exp(-Z / 8e-5),
+                "Z": Z,
+                "Z_bar": Z / 37e-6,
+                "sR": -90e6 * np.exp(-Z / 1e-4) * (Z < 4e-4),
+                "eps_avg": 0.002 * np.exp(-Z / 8e-5),
             },
             "energy": {
-                "KE_initial": 84e-6, "W_plastic": 84e-6,
-                "KE_rebound": 0.0,   "COR": 0.0,
+                "KE_initial": 84e-6,
+                "W_plastic": 84e-6,
+                "KE_rebound": 0.0,
+                "COR": 0.0,
             },
         }
 
     def test_compare_runs_without_error(self):
-        mpm  = self._make_mock_mpm_results()
-        ana  = self._make_mock_analytical_results()
+        mpm = self._make_mock_mpm_results()
+        ana = self._make_mock_analytical_results()
         with patch("matplotlib.pyplot.show"):
             try:
                 import matplotlib
+
                 matplotlib.use("Agg")
             except Exception:
                 pass
             compare_results(mpm, ana, show=False)
 
     def test_compare_saves_figure(self):
-        mpm  = self._make_mock_mpm_results()
-        ana  = self._make_mock_analytical_results()
+        mpm = self._make_mock_mpm_results()
+        ana = self._make_mock_analytical_results()
         with patch("matplotlib.pyplot.show"):
             with tempfile.TemporaryDirectory() as tmpdir:
                 path = os.path.join(tmpdir, "cmp.png")
                 try:
                     import matplotlib
+
                     matplotlib.use("Agg")
                 except Exception:
                     pass
@@ -522,11 +515,12 @@ class TestCompareResults:
                 assert os.path.exists(path)
 
     def test_compare_show_false_no_plt_show(self):
-        mpm  = self._make_mock_mpm_results()
-        ana  = self._make_mock_analytical_results()
+        mpm = self._make_mock_mpm_results()
+        ana = self._make_mock_analytical_results()
         with patch("matplotlib.pyplot.show") as mock_show:
             try:
                 import matplotlib
+
                 matplotlib.use("Agg")
             except Exception:
                 pass
@@ -534,11 +528,12 @@ class TestCompareResults:
             mock_show.assert_not_called()
 
     def test_compare_show_true_calls_plt_show(self):
-        mpm  = self._make_mock_mpm_results()
-        ana  = self._make_mock_analytical_results()
+        mpm = self._make_mock_mpm_results()
+        ana = self._make_mock_analytical_results()
         with patch("matplotlib.pyplot.show") as mock_show:
             try:
                 import matplotlib
+
                 matplotlib.use("Agg")
             except Exception:
                 pass
@@ -552,6 +547,7 @@ class TestCompareResults:
         with patch("matplotlib.pyplot.show"):
             try:
                 import matplotlib
+
                 matplotlib.use("Agg")
             except Exception:
                 pass
@@ -562,24 +558,25 @@ class TestCompareResults:
 # Class 8: Energy physics (pure Python checks, no taichi)
 # ---------------------------------------------------------------------------
 
+
 class TestEnergyPhysics:
 
     def test_KE_formula(self):
         p = ShotPeenParams(V=35.9)
-        KE = 0.5 * p.Ms * p.V ** 2
+        KE = 0.5 * p.Ms * p.V**2
         assert KE > 0
 
     def test_KE_scales_with_v_squared(self):
         p1 = ShotPeenParams(V=20.0)
         p2 = ShotPeenParams(V=40.0)
-        KE1 = 0.5 * p1.Ms * p1.V ** 2
-        KE2 = 0.5 * p2.Ms * p2.V ** 2
+        KE1 = 0.5 * p1.Ms * p1.V**2
+        KE2 = 0.5 * p2.Ms * p2.V**2
         ratio = KE2 / KE1
         assert ratio == pytest.approx(4.0, rel=1e-6)
 
     def test_COR_definition(self):
         """COR = |v_rebound| / |v_impact|."""
-        v_impact  = -35.9
+        v_impact = -35.9
         v_rebound = 27.0
         COR = abs(v_rebound / v_impact)
         assert 0.0 < COR < 1.0
@@ -610,16 +607,17 @@ class TestEnergyPhysics:
         mu = E / (2 * (1 + nu))
         la = E * nu / ((1 + nu) * (1 - 2 * nu))
         c_p = math.sqrt((la + 2 * mu) / rho)
-        dx  = 1e-4   # 100 µm
-        V   = 35.9
-        dt  = 0.3 * dx / (c_p + V)
+        dx = 1e-4  # 100 µm
+        V = 35.9
+        dt = 0.3 * dx / (c_p + V)
         assert dt > 0
-        assert dt < dx / c_p   # must satisfy CFL
+        assert dt < dx / c_p  # must satisfy CFL
 
 
 # ---------------------------------------------------------------------------
 # Class 9: Return mapping physics (NumPy reimplementation to verify kernel)
 # ---------------------------------------------------------------------------
+
 
 class TestVonMisesReturnMapping:
     """
@@ -664,7 +662,7 @@ class TestVonMisesReturnMapping:
         tau_p = np.array([1000e6, -500e6, -500e6])
         tc, Jp = self._return_map(tau_p, 0.0, mu, sy0, H)
         norm_trial = np.linalg.norm(tau_p - tau_p.mean())
-        norm_corr  = np.linalg.norm(tc  - tc.mean())
+        norm_corr = np.linalg.norm(tc - tc.mean())
         assert norm_corr < norm_trial
 
     def test_plastic_strain_increases(self):
@@ -697,17 +695,17 @@ class TestVonMisesReturnMapping:
     def test_higher_hardening_less_plasticity(self):
         mu, sy0, _ = self._params()
         tau_p = np.array([1000e6, -500e6, -500e6])
-        _, Jp_low  = self._return_map(tau_p, 0.0, mu, sy0, H=1.0e9)
+        _, Jp_low = self._return_map(tau_p, 0.0, mu, sy0, H=1.0e9)
         _, Jp_high = self._return_map(tau_p, 0.0, mu, sy0, H=10.0e9)
-        assert Jp_high < Jp_low   # stiffer hardening → less plastic deformation
+        assert Jp_high < Jp_low  # stiffer hardening → less plastic deformation
 
     def test_accumulated_hardening_raises_yield(self):
         mu, sy0, H = self._params()
         tau_p = np.array([400e6, -200e6, -200e6])
         _, Jp1 = self._return_map(tau_p, 0.0, mu, sy0, H)
-        _, Jp2 = self._return_map(tau_p, Jp1,  mu, sy0, H)
+        _, Jp2 = self._return_map(tau_p, Jp1, mu, sy0, H)
         # Second pass: Jp should increase less (or not at all) as yield stress rose
-        assert Jp2 <= Jp1 + Jp1 * 1.1   # coarse bound
+        assert Jp2 <= Jp1 + Jp1 * 1.1  # coarse bound
 
     def test_zero_trial_stress_no_plasticity(self):
         mu, sy0, H = self._params()
@@ -721,6 +719,7 @@ class TestVonMisesReturnMapping:
 # Class 10: plot_energy_history (mock matplotlib)
 # ---------------------------------------------------------------------------
 
+
 class TestPlotEnergyHistory:
 
     @requires_taichi
@@ -728,6 +727,7 @@ class TestPlotEnergyHistory:
         with patch("matplotlib.pyplot.show"):
             try:
                 import matplotlib
+
                 matplotlib.use("Agg")
             except Exception:
                 pass
@@ -740,6 +740,7 @@ class TestPlotEnergyHistory:
                 path = os.path.join(tmpdir, "energy.png")
                 try:
                     import matplotlib
+
                     matplotlib.use("Agg")
                 except Exception:
                     pass
@@ -751,6 +752,7 @@ class TestPlotEnergyHistory:
         with patch("matplotlib.pyplot.show") as mock_show:
             try:
                 import matplotlib
+
                 matplotlib.use("Agg")
             except Exception:
                 pass

@@ -17,6 +17,7 @@ Covers:
  11. Cross-material generalization — inference on unseen material
  12. Mixed material dataset — sims with and without simulation_params.txt
 """
+
 from __future__ import annotations
 
 import os
@@ -55,18 +56,19 @@ from native_dataset_gen import (
 # Constants
 # ---------------------------------------------------------------------------
 ALL_WORKPIECES = sorted(WORKPIECE_MATERIALS.keys())
-ALL_SHOTS      = sorted(SHOT_MATERIALS.keys())
-ALL_COMBOS     = [(wp, sp) for wp in ALL_WORKPIECES for sp in ALL_SHOTS]
+ALL_SHOTS = sorted(SHOT_MATERIALS.keys())
+ALL_COMBOS = [(wp, sp) for wp in ALL_WORKPIECES for sp in ALL_SHOTS]
 
 # Smallest viable dataset: ≥7 sims so 70/15/15 split is non-empty
 MIN_SIMS_FOR_SPLIT = 7
-TINY_NX = TINY_NY = 10        # 11×11=121 nodes — fast generation
-TINY_G             = 5        # 5×5 checkerboard
+TINY_NX = TINY_NY = 10  # 11×11=121 nodes — fast generation
+TINY_G = 5  # 5×5 checkerboard
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _write_sim_params(path: Path, wp_name: str, shot_name: str) -> None:
     """Write a minimal simulation_params.txt with a [material] block."""
@@ -101,11 +103,9 @@ def _make_synthetic_dataset(
     for i in range(n_sims):
         sim = root / f"Simulation_{i}"
         sim.mkdir(parents=True, exist_ok=True)
-        np.save(sim / "checkerboard.npy",
-                rng.random((G, G)).astype(np.float32))
+        np.save(sim / "checkerboard.npy", rng.random((G, G)).astype(np.float32))
         # Physical displacement in µm range
-        np.save(sim / "displacements.npy",
-                (rng.random((n_nodes, 3)) * 1e-4).astype(np.float32))
+        np.save(sim / "displacements.npy", (rng.random((n_nodes, 3)) * 1e-4).astype(np.float32))
         np.save(sim / "node_coords.npy", coords)
         if write_params:
             _write_sim_params(sim, wp_name, shot_name)
@@ -116,25 +116,33 @@ def _make_synthetic_dataset(
 # 1. Material normalisation
 # ---------------------------------------------------------------------------
 
+
 class TestMaterialNormalizationBounds:
     """All 25 material combos must normalise to [-0.5, 1.5] with no NaN/Inf."""
 
-    @pytest.mark.parametrize("wp_name,shot_name", ALL_COMBOS,
-                             ids=[f"{w}+{s}" for w, s in ALL_COMBOS])
+    @pytest.mark.parametrize("wp_name,shot_name", ALL_COMBOS, ids=[f"{w}+{s}" for w, s in ALL_COMBOS])
     def test_in_clip_range(self, wp_name, shot_name):
         wp = get_workpiece(wp_name)
         sp = get_shot(shot_name)
-        raw = np.array([
-            wp["E"], wp["nu"], wp["sigma_yield"], wp["c"],
-            sp["E_s"], sp["nu_s"], sp["rho_s"],
-        ], dtype=np.float32)
+        raw = np.array(
+            [
+                wp["E"],
+                wp["nu"],
+                wp["sigma_yield"],
+                wp["c"],
+                sp["E_s"],
+                sp["nu_s"],
+                sp["rho_s"],
+            ],
+            dtype=np.float32,
+        )
         normed = M.normalize_mat_features(raw)
 
         assert normed.shape == (7,), "Output shape must be (7,)"
-        assert np.isfinite(normed).all(), \
-            f"NaN or Inf in normalised features for {wp_name}+{shot_name}: {normed}"
-        assert (normed >= -0.5).all() and (normed <= 1.5).all(), \
-            f"Normalised features outside [-0.5, 1.5] for {wp_name}+{shot_name}: {normed}"
+        assert np.isfinite(normed).all(), f"NaN or Inf in normalised features for {wp_name}+{shot_name}: {normed}"
+        assert (normed >= -0.5).all() and (
+            normed <= 1.5
+        ).all(), f"Normalised features outside [-0.5, 1.5] for {wp_name}+{shot_name}: {normed}"
 
     def test_default_material_normalises(self):
         """The hardcoded default material vector must normalise without error."""
@@ -142,8 +150,7 @@ class TestMaterialNormalizationBounds:
         assert np.isfinite(normed).all()
         assert normed.shape == (7,)
 
-    @pytest.mark.parametrize("wp_name,shot_name", ALL_COMBOS,
-                             ids=[f"{w}+{s}" for w, s in ALL_COMBOS])
+    @pytest.mark.parametrize("wp_name,shot_name", ALL_COMBOS, ids=[f"{w}+{s}" for w, s in ALL_COMBOS])
     def test_parsed_from_params_txt(self, wp_name, shot_name, tmp_path):
         """Parsing simulation_params.txt yields identical features to direct lookup."""
         sim = tmp_path / "Simulation_0"
@@ -151,8 +158,7 @@ class TestMaterialNormalizationBounds:
         _write_sim_params(sim, wp_name, shot_name)
 
         parsed = M._parse_material_block(str(sim))
-        assert parsed is not None, \
-            f"_parse_material_block returned None for {wp_name}+{shot_name}"
+        assert parsed is not None, f"_parse_material_block returned None for {wp_name}+{shot_name}"
         assert set(parsed.keys()) == set(M.MAT_FEATURE_KEYS)
 
         # Verify round-trip normalisation is finite
@@ -181,6 +187,7 @@ class TestMaterialNormalizationBounds:
 
 PATTERN_MODES = ["uniform", "bimodal", "gradient", "random", "sparse"]
 
+
 class TestCheckerboardPatternModes:
     """All 5 pattern modes must produce valid (G, G) float32 arrays."""
 
@@ -193,8 +200,9 @@ class TestCheckerboardPatternModes:
         assert cb.shape == (G, G), f"mode={mode} G={G}: wrong shape {cb.shape}"
         assert cb.dtype == np.float32, f"Expected float32, got {cb.dtype}"
         assert np.isfinite(cb).all(), f"NaN/Inf in {mode} pattern"
-        assert (cb >= lo - 1e-7).all() and (cb <= hi + 1e-7).all(), \
-            f"mode={mode} G={G}: values outside [{lo}, {hi}]: min={cb.min()}, max={cb.max()}"
+        assert (cb >= lo - 1e-7).all() and (
+            cb <= hi + 1e-7
+        ).all(), f"mode={mode} G={G}: values outside [{lo}, {hi}]: min={cb.min()}, max={cb.max()}"
 
     def test_unknown_mode_raises(self):
         with pytest.raises(ValueError, match="Unknown pattern mode"):
@@ -224,16 +232,15 @@ class TestCheckerboardPatternModes:
         """Gradient pattern must be monotone along one axis (row or column)."""
         rng = np.random.default_rng(5)
         cb = _make_checkerboard("gradient", 10, rng)
-        row_mono = all(cb[i, 0] <= cb[i+1, 0] for i in range(9)) or \
-                   all(cb[i, 0] >= cb[i+1, 0] for i in range(9))
-        col_mono = all(cb[0, j] <= cb[0, j+1] for j in range(9)) or \
-                   all(cb[0, j] >= cb[0, j+1] for j in range(9))
+        row_mono = all(cb[i, 0] <= cb[i + 1, 0] for i in range(9)) or all(cb[i, 0] >= cb[i + 1, 0] for i in range(9))
+        col_mono = all(cb[0, j] <= cb[0, j + 1] for j in range(9)) or all(cb[0, j] >= cb[0, j + 1] for j in range(9))
         assert row_mono or col_mono, "Gradient should be monotone along one axis"
 
 
 # ---------------------------------------------------------------------------
 # 3. Model architecture
 # ---------------------------------------------------------------------------
+
 
 class TestModelArchitectureVariants:
     """DisplacementPredictor forward pass with various G, N, and material dims."""
@@ -243,8 +250,7 @@ class TestModelArchitectureVariants:
         model = M.create_model(input_channels=1, num_nodes=N, checkerboard_size=G)
         x = torch.zeros(2, 1, G, G)
         out = model(x)
-        assert out.shape == (2, N, 3), \
-            f"G={G} N={N}: expected (2,{N},3) got {out.shape}"
+        assert out.shape == (2, N, 3), f"G={G} N={N}: expected (2,{N},3) got {out.shape}"
 
     def test_output_finite_random_input(self):
         model = M.create_model(input_channels=1, num_nodes=121, checkerboard_size=5)
@@ -260,10 +266,8 @@ class TestModelArchitectureVariants:
 
     def test_material_conditioning_changes_output(self):
         """mat_dim > 0 must produce finite output with valid mat tensor."""
-        model = M.DisplacementPredictor(
-            input_channels=1, num_nodes=100, checkerboard_size=5, mat_dim=7
-        )
-        x   = torch.ones(1, 1, 5, 5)
+        model = M.DisplacementPredictor(input_channels=1, num_nodes=100, checkerboard_size=5, mat_dim=7)
+        x = torch.ones(1, 1, 5, 5)
         mat = torch.randn(1, 7)
         with torch.no_grad():
             out_mat = model(x, mat)
@@ -275,12 +279,10 @@ class TestModelArchitectureVariants:
         FIX VERIFIED: DisplacementPredictor(mat_dim=7).forward(x, None) now pads
         a zero mat tensor automatically instead of raising RuntimeError.
         """
-        model = M.DisplacementPredictor(
-            input_channels=1, num_nodes=100, checkerboard_size=5, mat_dim=7
-        )
+        model = M.DisplacementPredictor(input_channels=1, num_nodes=100, checkerboard_size=5, mat_dim=7)
         x = torch.ones(1, 1, 5, 5)
         with torch.no_grad():
-            out = model(x, None)   # should NOT raise after the fix
+            out = model(x, None)  # should NOT raise after the fix
         assert out.shape == (1, 100, 3)
         assert torch.isfinite(out).all()
 
@@ -293,6 +295,7 @@ class TestModelArchitectureVariants:
 # ---------------------------------------------------------------------------
 # 4. sMAPE removed — verify it is gone and relative RMSE is present
 # ---------------------------------------------------------------------------
+
 
 class TestSmapeNaNHole:
     """
@@ -311,14 +314,14 @@ class TestSmapeNaNHole:
     def test_evaluate_on_dataset_returns_rel_rmse(self):
         """evaluate_on_dataset must return mean_rel_rmse_pct in its result dict."""
         import inspect
+
         src = inspect.getsource(M.evaluate_on_dataset)
-        assert "mean_rel_rmse_pct" in src, (
-            "evaluate_on_dataset must return mean_rel_rmse_pct (HOLE 7 fix)"
-        )
+        assert "mean_rel_rmse_pct" in src, "evaluate_on_dataset must return mean_rel_rmse_pct (HOLE 7 fix)"
 
     def test_rel_rmse_pct_in_per_sim(self):
         """per_sim dicts inside evaluate_on_dataset must contain rel_rmse_pct."""
         import inspect
+
         src = inspect.getsource(M.evaluate_on_dataset)
         assert "rel_rmse_pct" in src
 
@@ -326,6 +329,7 @@ class TestSmapeNaNHole:
 # ---------------------------------------------------------------------------
 # 5. Known hole: ZeroDivisionError with degenerate split
 # ---------------------------------------------------------------------------
+
 
 class TestDegenerateDatasetSplit:
     """
@@ -345,13 +349,14 @@ class TestDegenerateDatasetSplit:
         """
         rng = np.random.default_rng(n_sims)
         root = _make_synthetic_dataset(
-            tmp_path / f"ds_{n_sims}", "Ti-6Al-4V", "steel",
-            n_sims=n_sims, write_params=False,
+            tmp_path / f"ds_{n_sims}",
+            "Ti-6Al-4V",
+            "steel",
+            n_sims=n_sims,
+            write_params=False,
         )
         # create_data_loaders now succeeds — val_loader may be empty but no crash
-        train_loader, val_loader, test_loader, _ = M.create_data_loaders(
-            str(root), batch_size=4
-        )
+        train_loader, val_loader, test_loader, _ = M.create_data_loaders(str(root), batch_size=4)
         assert len(train_loader) >= 0  # no crash is the key assertion
         # Callers should check len(val_loader) == 0 before training
         if n_sims < 7:
@@ -360,14 +365,14 @@ class TestDegenerateDatasetSplit:
     def test_minimum_viable_split(self, tmp_path):
         """n_sims = 7 is the minimum that avoids an empty val split."""
         root = _make_synthetic_dataset(
-            tmp_path / "ds_7", "4340-Steel", "steel",
-            n_sims=7, write_params=False,
+            tmp_path / "ds_7",
+            "4340-Steel",
+            "steel",
+            n_sims=7,
+            write_params=False,
         )
-        train_loader, val_loader, test_loader, _ = M.create_data_loaders(
-            str(root), batch_size=4
-        )
-        assert len(val_loader) > 0, \
-            "With n_sims=7 the val split should be non-empty"
+        train_loader, val_loader, test_loader, _ = M.create_data_loaders(str(root), batch_size=4)
+        assert len(val_loader) > 0, "With n_sims=7 the val split should be non-empty"
         assert len(test_loader) > 0
 
 
@@ -375,83 +380,93 @@ class TestDegenerateDatasetSplit:
 # 6. Training stability with extreme material combos
 # ---------------------------------------------------------------------------
 
+
 class TestTrainingStabilityExtremes:
     """No NaN/Inf in losses or model output for the most extreme material combos."""
 
     # Extremes: softest material + heaviest shot  vs  hardest + lightest shot
-    @pytest.mark.parametrize("wp,shot", [
-        ("Al-7075-T6",  "tungsten"),   # soft + heaviest
-        ("Inconel-718", "glass"),      # hard + lightest
-        ("Ti-6Al-4V",   "ceramic"),    # intermediate + stiff
-    ])
+    @pytest.mark.parametrize(
+        "wp,shot",
+        [
+            ("Al-7075-T6", "tungsten"),  # soft + heaviest
+            ("Inconel-718", "glass"),  # hard + lightest
+            ("Ti-6Al-4V", "ceramic"),  # intermediate + stiff
+        ],
+    )
     def test_training_does_not_produce_nan(self, wp, shot, tmp_path):
         """Training on extreme material combo must not produce NaN losses."""
         root = _make_synthetic_dataset(
-            tmp_path / f"{wp}_{shot}", wp, shot,
-            n_sims=MIN_SIMS_FOR_SPLIT, write_params=True,
+            tmp_path / f"{wp}_{shot}",
+            wp,
+            shot,
+            n_sims=MIN_SIMS_FOR_SPLIT,
+            write_params=True,
         )
         train_loader, val_loader, _, _ = M.create_data_loaders(str(root), batch_size=4)
-        model     = M.create_model(1, num_nodes=121, checkerboard_size=TINY_G)
+        model = M.create_model(1, num_nodes=121, checkerboard_size=TINY_G)
         criterion = nn.MSELoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=1.0)
 
         train_losses, val_losses = M.train_model(
-            model, train_loader, val_loader, criterion, optimizer, scheduler,
-            epochs=3, patience=3,
+            model,
+            train_loader,
+            val_loader,
+            criterion,
+            optimizer,
+            scheduler,
+            epochs=3,
+            patience=3,
         )
         for epoch, (tl, vl) in enumerate(zip(train_losses, val_losses)):
-            assert tl == tl and vl == vl, \
-                f"NaN loss at epoch {epoch+1} for {wp}+{shot}: train={tl}, val={vl}"
+            assert tl == tl and vl == vl, f"NaN loss at epoch {epoch+1} for {wp}+{shot}: train={tl}, val={vl}"
 
         # Post-training inference must be finite (device-agnostic)
         model.eval()
         device = next(model.parameters()).device
         with torch.no_grad():
-            x   = torch.zeros(1, 1, TINY_G, TINY_G, device=device)
+            x = torch.zeros(1, 1, TINY_G, TINY_G, device=device)
             out = model(x)
-        assert torch.isfinite(out).all(), \
-            f"NaN/Inf in model output after training on {wp}+{shot}"
+        assert torch.isfinite(out).all(), f"NaN/Inf in model output after training on {wp}+{shot}"
 
 
 # ---------------------------------------------------------------------------
 # 7. Dataset generation — all 25 material combos (synthetic, fast)
 # ---------------------------------------------------------------------------
 
+
 class TestDatasetGenAllMaterialCombos:
     """All 25 material combos produce valid simulation folders."""
 
-    @pytest.mark.parametrize("wp_name,shot_name", ALL_COMBOS,
-                             ids=[f"{w}+{s}" for w, s in ALL_COMBOS])
+    @pytest.mark.parametrize("wp_name,shot_name", ALL_COMBOS, ids=[f"{w}+{s}" for w, s in ALL_COMBOS])
     def test_required_files_present(self, wp_name, shot_name, tmp_path):
         """Synthetic dataset has checkerboard.npy, displacements.npy, params.txt."""
-        root = _make_synthetic_dataset(
-            tmp_path, wp_name, shot_name, n_sims=2, write_params=True
-        )
+        root = _make_synthetic_dataset(tmp_path, wp_name, shot_name, n_sims=2, write_params=True)
         for i in range(2):
             sim = root / f"Simulation_{i}"
             assert (sim / "checkerboard.npy").exists()
             assert (sim / "displacements.npy").exists()
             assert (sim / "simulation_params.txt").exists()
 
-    @pytest.mark.parametrize("wp_name,shot_name", ALL_COMBOS,
-                             ids=[f"{w}+{s}" for w, s in ALL_COMBOS])
+    @pytest.mark.parametrize("wp_name,shot_name", ALL_COMBOS, ids=[f"{w}+{s}" for w, s in ALL_COMBOS])
     def test_material_features_loadable(self, wp_name, shot_name, tmp_path):
         """create_data_loaders with load_material_features=True succeeds."""
         root = _make_synthetic_dataset(
-            tmp_path, wp_name, shot_name,
-            n_sims=MIN_SIMS_FOR_SPLIT, write_params=True,
+            tmp_path,
+            wp_name,
+            shot_name,
+            n_sims=MIN_SIMS_FOR_SPLIT,
+            write_params=True,
         )
         train_l, val_l, test_l, data = M.create_data_loaders(
-            str(root), batch_size=4,
+            str(root),
+            batch_size=4,
             load_material_features=True,
         )
         assert "material_features" in data
         mat = data["material_features"]
-        assert mat.shape == (MIN_SIMS_FOR_SPLIT, 7), \
-            f"material_features shape mismatch: {mat.shape}"
-        assert np.isfinite(mat).all(), \
-            f"NaN in material_features for {wp_name}+{shot_name}"
+        assert mat.shape == (MIN_SIMS_FOR_SPLIT, 7), f"material_features shape mismatch: {mat.shape}"
+        assert np.isfinite(mat).all(), f"NaN in material_features for {wp_name}+{shot_name}"
 
 
 # ---------------------------------------------------------------------------
@@ -459,8 +474,8 @@ class TestDatasetGenAllMaterialCombos:
 # ---------------------------------------------------------------------------
 
 PHYS_COMBOS = [
-    ("Ti-6Al-4V",   "steel"),
-    ("Al-7075-T6",  "steel"),
+    ("Ti-6Al-4V", "steel"),
+    ("Al-7075-T6", "steel"),
     ("Inconel-718", "ceramic"),
 ]
 
@@ -474,17 +489,17 @@ def physics_datasets(tmp_path_factory):
         ds_dir = root / f"{wp}_{sp}".replace("-", "_")
         ds_dir.mkdir()
         gp = GeneratorParams(
-            output_dir        = str(ds_dir),
-            n_simulations     = 1,
-            Nx                = TINY_NX,
-            Ny                = TINY_NY,
-            checkerboard_size = TINY_G,
-            V_range           = (40.0, 40.0),   # fixed V for comparison
-            D_range           = (0.0006, 0.0006),
-            n_shots_range     = (30, 30),
-            workpiece_material= wp,
-            shot_material     = sp,
-            base_seed         = 0,
+            output_dir=str(ds_dir),
+            n_simulations=1,
+            Nx=TINY_NX,
+            Ny=TINY_NY,
+            checkerboard_size=TINY_G,
+            V_range=(40.0, 40.0),  # fixed V for comparison
+            D_range=(0.0006, 0.0006),
+            n_shots_range=(30, 30),
+            workpiece_material=wp,
+            shot_material=sp,
+            base_seed=0,
         )
         res = generate_single_simulation(0, gp)
         datasets[(wp, sp)] = {"dir": ds_dir, "result": res}
@@ -516,18 +531,15 @@ class TestPhysicsPlausibility:
         disp = np.load(ds_dir / "Simulation_0" / "displacements.npy")
         peak_m = float(np.max(np.abs(disp)))
         peak_um = peak_m * 1e6
-        assert peak_um > 0.01, \
-            f"Peak displacement {peak_um:.4f} µm is suspiciously small"
-        assert peak_um < 10_000, \
-            f"Peak displacement {peak_um:.1f} µm is unphysically large (> 10mm)"
+        assert peak_um > 0.01, f"Peak displacement {peak_um:.4f} µm is suspiciously small"
+        assert peak_um < 10_000, f"Peak displacement {peak_um:.1f} µm is unphysically large (> 10mm)"
 
     @pytest.mark.parametrize("wp,sp", PHYS_COMBOS)
     def test_displacements_shape(self, physics_datasets, wp, sp):
         """displacements.npy must be (N, 3) with N > 0."""
         ds_dir = physics_datasets[(wp, sp)]["dir"]
         disp = np.load(ds_dir / "Simulation_0" / "displacements.npy")
-        assert disp.ndim == 2 and disp.shape[1] == 3, \
-            f"Unexpected displacement shape: {disp.shape}"
+        assert disp.ndim == 2 and disp.shape[1] == 3, f"Unexpected displacement shape: {disp.shape}"
         assert disp.shape[0] > 0
 
     @pytest.mark.parametrize("wp,sp", PHYS_COMBOS)
@@ -535,21 +547,20 @@ class TestPhysicsPlausibility:
         """checkerboard.npy must be (G, G) with positive values."""
         ds_dir = physics_datasets[(wp, sp)]["dir"]
         cb = np.load(ds_dir / "Simulation_0" / "checkerboard.npy")
-        assert cb.ndim == 2 and cb.shape[0] == cb.shape[1], \
-            f"Checkerboard not square: {cb.shape}"
+        assert cb.ndim == 2 and cb.shape[0] == cb.shape[1], f"Checkerboard not square: {cb.shape}"
         assert (cb >= 0).all(), "Negative checkerboard intensities"
         assert np.any(cb > 0), "All checkerboard intensities are zero"
 
     def test_softer_material_larger_deformation(self, physics_datasets):
         """Al (softer) should deform more than Inconel (harder) under identical loading."""
-        al_dir    = physics_datasets[("Al-7075-T6",  "steel")]["dir"]
-        inc_dir   = physics_datasets[("Inconel-718", "ceramic")]["dir"]
-        uz_al  = np.abs(np.load(al_dir  / "Simulation_0" / "displacements.npy")[:, 2])
+        al_dir = physics_datasets[("Al-7075-T6", "steel")]["dir"]
+        inc_dir = physics_datasets[("Inconel-718", "ceramic")]["dir"]
+        uz_al = np.abs(np.load(al_dir / "Simulation_0" / "displacements.npy")[:, 2])
         uz_inc = np.abs(np.load(inc_dir / "Simulation_0" / "displacements.npy")[:, 2])
         # Allow for different shot types: just verify both are non-zero and check
         # that the ratio is physically reasonable (Al should deform more, but not
         # 100× more — deformation also depends on shot type)
-        peak_al  = float(np.max(uz_al))
+        peak_al = float(np.max(uz_al))
         peak_inc = float(np.max(uz_inc))
         assert peak_al > 0 and peak_inc > 0, "Both materials must have non-zero deformation"
 
@@ -558,6 +569,7 @@ class TestPhysicsPlausibility:
 # 9. High-resolution mesh
 # ---------------------------------------------------------------------------
 
+
 class TestHighResolutionMesh:
     """Dataset and model with Nx=Ny=30 (961 nodes, high div/meter)."""
 
@@ -565,9 +577,9 @@ class TestHighResolutionMesh:
     def hires_dataset(self, tmp_path_factory):
         NX, NY = 30, 30
         root = tmp_path_factory.mktemp("hires")
-        rng  = np.random.default_rng(1)
+        rng = np.random.default_rng(1)
         n_nodes = (NX + 1) * (NY + 1)  # 961
-        coords  = np.zeros((n_nodes, 3), dtype=np.float32)
+        coords = np.zeros((n_nodes, 3), dtype=np.float32)
         xs = np.linspace(0.0, 0.01, NX + 1, dtype=np.float32)
         ys = np.linspace(0.0, 0.01, NY + 1, dtype=np.float32)
         xx, yy = np.meshgrid(xs, ys)
@@ -578,42 +590,36 @@ class TestHighResolutionMesh:
         for i in range(MIN_SIMS_FOR_SPLIT):
             sim = root / f"Simulation_{i}"
             sim.mkdir()
-            np.save(sim / "checkerboard.npy",
-                    rng.random((G, G)).astype(np.float32))
-            np.save(sim / "displacements.npy",
-                    (rng.random((n_nodes, 3)) * 1e-4).astype(np.float32))
+            np.save(sim / "checkerboard.npy", rng.random((G, G)).astype(np.float32))
+            np.save(sim / "displacements.npy", (rng.random((n_nodes, 3)) * 1e-4).astype(np.float32))
             np.save(sim / "node_coords.npy", coords)
         return root, n_nodes, G
 
     def test_infer_dataset_shape(self, hires_dataset):
         root, n_nodes, G = hires_dataset
         detected_nodes, detected_G = M.infer_dataset_shape(str(root))
-        assert detected_nodes == n_nodes, \
-            f"Expected {n_nodes} nodes, detected {detected_nodes}"
+        assert detected_nodes == n_nodes, f"Expected {n_nodes} nodes, detected {detected_nodes}"
         assert detected_G == G, f"Expected G={G}, detected {detected_G}"
 
     def test_model_forward_pass(self, hires_dataset):
         root, n_nodes, G = hires_dataset
-        model = M.create_model(input_channels=1, num_nodes=n_nodes,
-                                checkerboard_size=G)
-        x   = torch.zeros(2, 1, G, G)
+        model = M.create_model(input_channels=1, num_nodes=n_nodes, checkerboard_size=G)
+        x = torch.zeros(2, 1, G, G)
         out = model(x)
         assert out.shape == (2, n_nodes, 3)
         assert torch.isfinite(out).all()
 
     def test_dataloader_loads_correct_nodes(self, hires_dataset):
         root, n_nodes, G = hires_dataset
-        train_l, val_l, test_l, _ = M.create_data_loaders(
-            str(root), batch_size=4
-        )
+        train_l, val_l, test_l, _ = M.create_data_loaders(str(root), batch_size=4)
         cb, disp = next(iter(train_l))
-        assert disp.shape[-2] == n_nodes, \
-            f"Expected {n_nodes} nodes in batch, got {disp.shape[-2]}"
+        assert disp.shape[-2] == n_nodes, f"Expected {n_nodes} nodes in batch, got {disp.shape[-2]}"
 
 
 # ---------------------------------------------------------------------------
 # 10. Extreme shot conditions
 # ---------------------------------------------------------------------------
+
 
 class TestExtremeShotConditions:
     """Edge-case shot parameters must not crash the simulation pipeline."""
@@ -622,83 +628,76 @@ class TestExtremeShotConditions:
     def test_extreme_velocity(self, V, tmp_path):
         """Very low and very high velocity simulations must succeed."""
         gp = GeneratorParams(
-            output_dir        = str(tmp_path),
-            n_simulations     = 1,
-            Nx                = TINY_NX,
-            Ny                = TINY_NY,
-            checkerboard_size = TINY_G,
-            V_range           = (V, V),
-            D_range           = (0.0006, 0.0006),
-            n_shots_range     = (20, 20),
-            workpiece_material= "Ti-6Al-4V",
-            shot_material     = "steel",
-            base_seed         = 0,
+            output_dir=str(tmp_path),
+            n_simulations=1,
+            Nx=TINY_NX,
+            Ny=TINY_NY,
+            checkerboard_size=TINY_G,
+            V_range=(V, V),
+            D_range=(0.0006, 0.0006),
+            n_shots_range=(20, 20),
+            workpiece_material="Ti-6Al-4V",
+            shot_material="steel",
+            base_seed=0,
         )
         res = generate_single_simulation(0, gp)
-        assert res["success"], \
-            f"Simulation with V={V} m/s failed: {res.get('error')}"
-        disp = np.load(
-            os.path.join(str(tmp_path), "Simulation_0", "displacements.npy")
-        )
-        assert np.isfinite(disp).all(), \
-            f"NaN/Inf displacements at V={V} m/s"
+        assert res["success"], f"Simulation with V={V} m/s failed: {res.get('error')}"
+        disp = np.load(os.path.join(str(tmp_path), "Simulation_0", "displacements.npy"))
+        assert np.isfinite(disp).all(), f"NaN/Inf displacements at V={V} m/s"
 
     @pytest.mark.parametrize("D_mm", [0.1, 2.0])
     def test_extreme_diameter(self, D_mm, tmp_path):
         """Very small and very large shot diameters must not crash."""
         gp = GeneratorParams(
-            output_dir        = str(tmp_path),
-            n_simulations     = 1,
-            Nx                = TINY_NX,
-            Ny                = TINY_NY,
-            checkerboard_size = TINY_G,
-            V_range           = (40.0, 40.0),
-            D_range           = (D_mm * 1e-3, D_mm * 1e-3),
-            n_shots_range     = (10, 10),
-            workpiece_material= "Ti-6Al-4V",
-            shot_material     = "steel",
-            base_seed         = 1,
+            output_dir=str(tmp_path),
+            n_simulations=1,
+            Nx=TINY_NX,
+            Ny=TINY_NY,
+            checkerboard_size=TINY_G,
+            V_range=(40.0, 40.0),
+            D_range=(D_mm * 1e-3, D_mm * 1e-3),
+            n_shots_range=(10, 10),
+            workpiece_material="Ti-6Al-4V",
+            shot_material="steel",
+            base_seed=1,
         )
         res = generate_single_simulation(0, gp)
-        assert res["success"], \
-            f"Simulation with D={D_mm}mm failed: {res.get('error')}"
+        assert res["success"], f"Simulation with D={D_mm}mm failed: {res.get('error')}"
 
     def test_single_shot(self, tmp_path):
         """n_shots=1 must succeed and produce non-trivial displacement."""
         gp = GeneratorParams(
-            output_dir        = str(tmp_path),
-            n_simulations     = 1,
-            Nx                = TINY_NX,
-            Ny                = TINY_NY,
-            checkerboard_size = TINY_G,
-            V_range           = (40.0, 40.0),
-            D_range           = (0.0006, 0.0006),
-            n_shots_range     = (1, 1),
-            workpiece_material= "Ti-6Al-4V",
-            shot_material     = "steel",
-            base_seed         = 2,
+            output_dir=str(tmp_path),
+            n_simulations=1,
+            Nx=TINY_NX,
+            Ny=TINY_NY,
+            checkerboard_size=TINY_G,
+            V_range=(40.0, 40.0),
+            D_range=(0.0006, 0.0006),
+            n_shots_range=(1, 1),
+            workpiece_material="Ti-6Al-4V",
+            shot_material="steel",
+            base_seed=2,
         )
         res = generate_single_simulation(0, gp)
         assert res["success"], f"Single-shot simulation failed: {res.get('error')}"
-        disp = np.load(
-            os.path.join(str(tmp_path), "Simulation_0", "displacements.npy")
-        )
+        disp = np.load(os.path.join(str(tmp_path), "Simulation_0", "displacements.npy"))
         assert np.any(disp != 0), "Single shot must produce non-zero displacement"
 
     def test_large_shot_count(self, tmp_path):
         """n_shots=300 on small mesh must succeed without memory crash."""
         gp = GeneratorParams(
-            output_dir        = str(tmp_path),
-            n_simulations     = 1,
-            Nx                = TINY_NX,
-            Ny                = TINY_NY,
-            checkerboard_size = TINY_G,
-            V_range           = (40.0, 40.0),
-            D_range           = (0.0003, 0.0003),
-            n_shots_range     = (300, 300),
-            workpiece_material= "Ti-6Al-4V",
-            shot_material     = "steel",
-            base_seed         = 3,
+            output_dir=str(tmp_path),
+            n_simulations=1,
+            Nx=TINY_NX,
+            Ny=TINY_NY,
+            checkerboard_size=TINY_G,
+            V_range=(40.0, 40.0),
+            D_range=(0.0003, 0.0003),
+            n_shots_range=(300, 300),
+            workpiece_material="Ti-6Al-4V",
+            shot_material="steel",
+            base_seed=3,
         )
         res = generate_single_simulation(0, gp)
         assert res["success"], f"300-shot simulation failed: {res.get('error')}"
@@ -709,26 +708,26 @@ class TestExtremeShotConditions:
             sim_root = tmp_path / wp.replace("-", "_")
             sim_root.mkdir(exist_ok=True)
             gp = GeneratorParams(
-                output_dir        = str(sim_root),
-                n_simulations     = 1,
-                Nx                = TINY_NX,
-                Ny                = TINY_NY,
-                checkerboard_size = TINY_G,
-                V_range           = (40.0, 40.0),
-                D_range           = (0.0006, 0.0006),
-                n_shots_range     = (20, 20),
-                workpiece_material= wp,
-                shot_material     = "steel",
-                base_seed         = 10,
+                output_dir=str(sim_root),
+                n_simulations=1,
+                Nx=TINY_NX,
+                Ny=TINY_NY,
+                checkerboard_size=TINY_G,
+                V_range=(40.0, 40.0),
+                D_range=(0.0006, 0.0006),
+                n_shots_range=(20, 20),
+                workpiece_material=wp,
+                shot_material="steel",
+                base_seed=10,
             )
             res = generate_single_simulation(0, gp)
-            assert res["success"], \
-                f"Workpiece {wp} + steel failed: {res.get('error')}"
+            assert res["success"], f"Workpiece {wp} + steel failed: {res.get('error')}"
 
 
 # ---------------------------------------------------------------------------
 # 11. Cross-material generalization
 # ---------------------------------------------------------------------------
+
 
 class TestCrossMaterialGeneralization:
     """A model trained on one material must produce finite output on another."""
@@ -738,41 +737,43 @@ class TestCrossMaterialGeneralization:
         """Train a tiny model on Ti-6Al-4V + steel synthetic data."""
         root = _make_synthetic_dataset(
             tmp_path_factory.mktemp("ti_train"),
-            "Ti-6Al-4V", "steel",
+            "Ti-6Al-4V",
+            "steel",
             n_sims=MIN_SIMS_FOR_SPLIT,
         )
         train_l, val_l, _, _ = M.create_data_loaders(str(root), batch_size=4)
-        model     = M.create_model(1, 121, TINY_G)
+        model = M.create_model(1, 121, TINY_G)
         criterion = nn.MSELoss()
         optimizer = torch.optim.Adam(model.parameters())
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, 1.0)
-        M.train_model(model, train_l, val_l, criterion, optimizer, scheduler,
-                      epochs=3, patience=3)
+        M.train_model(model, train_l, val_l, criterion, optimizer, scheduler, epochs=3, patience=3)
         model.eval()
         return model
 
-    @pytest.mark.parametrize("wp,shot", [
-        ("Al-7075-T6",  "ceramic"),
-        ("Inconel-718", "tungsten"),
-        ("316L-SS",     "glass"),
-    ])
-    def test_inference_on_different_material_is_finite(
-            self, trained_ti_model, wp, shot, tmp_path):
+    @pytest.mark.parametrize(
+        "wp,shot",
+        [
+            ("Al-7075-T6", "ceramic"),
+            ("Inconel-718", "tungsten"),
+            ("316L-SS", "glass"),
+        ],
+    )
+    def test_inference_on_different_material_is_finite(self, trained_ti_model, wp, shot, tmp_path):
         """Inference on unseen material checkerboard must produce finite output."""
-        rng    = np.random.default_rng(99)
-        cb     = rng.random((1, 1, TINY_G, TINY_G)).astype(np.float32)
+        rng = np.random.default_rng(99)
+        cb = rng.random((1, 1, TINY_G, TINY_G)).astype(np.float32)
         device = next(trained_ti_model.parameters()).device
-        x      = torch.tensor(cb, device=device)
+        x = torch.tensor(cb, device=device)
         with torch.no_grad():
             out = trained_ti_model(x)
-        assert torch.isfinite(out).all(), \
-            f"Non-finite output for {wp}+{shot} on Ti-trained model"
+        assert torch.isfinite(out).all(), f"Non-finite output for {wp}+{shot} on Ti-trained model"
         assert out.shape == (1, 121, 3)
 
 
 # ---------------------------------------------------------------------------
 # 12. Mixed material dataset (some sims with / without params.txt)
 # ---------------------------------------------------------------------------
+
 
 class TestMixedMaterialDataset:
     """Dataset where some sims have simulation_params.txt and some don't.
@@ -784,17 +785,15 @@ class TestMixedMaterialDataset:
     @pytest.fixture(scope="class")
     def mixed_root(self, tmp_path_factory):
         root = tmp_path_factory.mktemp("mixed_mat")
-        rng    = np.random.default_rng(0)
+        rng = np.random.default_rng(0)
         coords = make_node_coords(121)
         G = TINY_G
         N_TOTAL = 8
         for i in range(N_TOTAL):
             sim = root / f"Simulation_{i}"
             sim.mkdir()
-            np.save(sim / "checkerboard.npy",
-                    rng.random((G, G)).astype(np.float32))
-            np.save(sim / "displacements.npy",
-                    (rng.random((121, 3)) * 1e-4).astype(np.float32))
+            np.save(sim / "checkerboard.npy", rng.random((G, G)).astype(np.float32))
+            np.save(sim / "displacements.npy", (rng.random((121, 3)) * 1e-4).astype(np.float32))
             np.save(sim / "node_coords.npy", coords)
             # Only even-indexed sims get params.txt
             if i % 2 == 0:
@@ -804,9 +803,7 @@ class TestMixedMaterialDataset:
     def test_load_material_features_mixed(self, mixed_root):
         """Loading material features on a mixed dataset should not crash."""
         root, N = mixed_root
-        _, _, _, data = M.create_data_loaders(
-            str(root), batch_size=4, load_material_features=True
-        )
+        _, _, _, data = M.create_data_loaders(str(root), batch_size=4, load_material_features=True)
         mat = data.get("material_features")
         assert mat is not None, "material_features must be present even with mixed dataset"
         assert mat.shape == (N, 7), f"Expected ({N}, 7), got {mat.shape}"
@@ -815,12 +812,9 @@ class TestMixedMaterialDataset:
     def test_dataloader_returns_correct_tuple_size(self, mixed_root):
         """With load_material_features=True, each batch is a 3-tuple."""
         root, _ = mixed_root
-        train_l, _, _, _ = M.create_data_loaders(
-            str(root), batch_size=4, load_material_features=True
-        )
+        train_l, _, _, _ = M.create_data_loaders(str(root), batch_size=4, load_material_features=True)
         batch = next(iter(train_l))
-        assert len(batch) == 3, \
-            f"Expected 3-tuple (cb, mat, disp), got {len(batch)}-tuple"
+        assert len(batch) == 3, f"Expected 3-tuple (cb, mat, disp), got {len(batch)}-tuple"
         cb, mat, disp = batch
         assert mat.shape[-1] == 7, f"Material feature dim should be 7, got {mat.shape}"
 
@@ -828,6 +822,7 @@ class TestMixedMaterialDataset:
 # ---------------------------------------------------------------------------
 # 13. infer_dataset_shape edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestInferDatasetShapeEdgeCases:
     """infer_dataset_shape must handle missing files and non-square checkerboards."""
@@ -844,10 +839,8 @@ class TestInferDatasetShapeEdgeCases:
     def test_non_square_checkerboard_raises(self, tmp_path):
         sim = tmp_path / "Simulation_0"
         sim.mkdir()
-        np.save(sim / "checkerboard.npy",
-                np.zeros((3, 7), dtype=np.float32))  # non-square
-        np.save(sim / "displacements.npy",
-                np.zeros((100, 3), dtype=np.float32))
+        np.save(sim / "checkerboard.npy", np.zeros((3, 7), dtype=np.float32))  # non-square
+        np.save(sim / "displacements.npy", np.zeros((100, 3), dtype=np.float32))
         with pytest.raises(ValueError, match="not square"):
             M.infer_dataset_shape(str(tmp_path))
 
@@ -855,8 +848,7 @@ class TestInferDatasetShapeEdgeCases:
         sim = tmp_path / "Simulation_0"
         sim.mkdir()
         np.save(sim / "checkerboard.npy", np.zeros((5, 5), dtype=np.float32))
-        np.save(sim / "displacements.npy",
-                np.zeros((100, 4), dtype=np.float32))  # wrong: 4 cols instead of 3
+        np.save(sim / "displacements.npy", np.zeros((100, 4), dtype=np.float32))  # wrong: 4 cols instead of 3
         with pytest.raises(ValueError, match="unexpected shape"):
             M.infer_dataset_shape(str(tmp_path))
 
@@ -865,24 +857,25 @@ class TestInferDatasetShapeEdgeCases:
 # 14. All-pattern-modes coverage in generated dataset
 # ---------------------------------------------------------------------------
 
+
 class TestPatternModeVariety:
     """Verify that all 5 pattern modes appear across a generated dataset."""
 
     def test_pattern_modes_covered(self, tmp_path):
         """With 25 simulations and vary_distribution=True, all patterns appear."""
         gp = GeneratorParams(
-            output_dir        = str(tmp_path),
-            n_simulations     = 25,
-            Nx                = TINY_NX,
-            Ny                = TINY_NY,
-            checkerboard_size = TINY_G,
-            V_range           = (40.0, 40.0),
-            D_range           = (0.0006, 0.0006),
-            n_shots_range     = (20, 20),
-            workpiece_material= "Ti-6Al-4V",
-            shot_material     = "steel",
-            base_seed         = 100,
-            pattern_modes     = ["uniform", "bimodal", "gradient", "random", "sparse"],
+            output_dir=str(tmp_path),
+            n_simulations=25,
+            Nx=TINY_NX,
+            Ny=TINY_NY,
+            checkerboard_size=TINY_G,
+            V_range=(40.0, 40.0),
+            D_range=(0.0006, 0.0006),
+            n_shots_range=(20, 20),
+            workpiece_material="Ti-6Al-4V",
+            shot_material="steel",
+            base_seed=100,
+            pattern_modes=["uniform", "bimodal", "gradient", "random", "sparse"],
         )
         seen_modes = set()
         for i in range(25):
@@ -891,13 +884,13 @@ class TestPatternModeVariety:
             mode = res.get("pattern_mode")
             if mode:
                 seen_modes.add(mode)
-        assert len(seen_modes) >= 3, \
-            f"Expected at least 3 distinct pattern modes in 25 sims, saw: {seen_modes}"
+        assert len(seen_modes) >= 3, f"Expected at least 3 distinct pattern modes in 25 sims, saw: {seen_modes}"
 
 
 # ---------------------------------------------------------------------------
 # 15. Normalization stats round-trip
 # ---------------------------------------------------------------------------
+
 
 class TestNormalizationStatsRoundTrip:
     """Checkerboard normalization bounds saved and loaded by train_save_gui are consistent."""
@@ -905,8 +898,11 @@ class TestNormalizationStatsRoundTrip:
     def test_stats_saved_on_training(self, tmp_path):
         """train_save_gui must write normalization_stats.npy."""
         root = _make_synthetic_dataset(
-            tmp_path / "ds", "Ti-6Al-4V", "steel",
-            n_sims=MIN_SIMS_FOR_SPLIT, write_params=False,
+            tmp_path / "ds",
+            "Ti-6Al-4V",
+            "steel",
+            n_sims=MIN_SIMS_FOR_SPLIT,
+            write_params=False,
         )
         M.train_save_gui(str(root))
         stats_path = root / "saved_model" / "normalization_stats.npy"
@@ -922,9 +918,12 @@ class TestNormalizationStatsRoundTrip:
         """After normalization, the relative ordering of checkerboard values is preserved."""
         rng = np.random.default_rng(0)
         n_nodes = 121
-        root    = _make_synthetic_dataset(
-            tmp_path, "Ti-6Al-4V", "steel",
-            n_sims=MIN_SIMS_FOR_SPLIT, write_params=False,
+        root = _make_synthetic_dataset(
+            tmp_path,
+            "Ti-6Al-4V",
+            "steel",
+            n_sims=MIN_SIMS_FOR_SPLIT,
+            write_params=False,
         )
         train_l, _, _, loaded = M.create_data_loaders(str(root), batch_size=4)
         cb_min = loaded["checkerboard_norm_min"]
@@ -933,5 +932,4 @@ class TestNormalizationStatsRoundTrip:
         # After normalisation, any value from the original range should map to [0,1]
         raw_val = rng.uniform(cb_min, cb_max)
         norm_val = (raw_val - cb_min) / max(cb_max - cb_min, 1e-12)
-        assert 0.0 <= norm_val <= 1.0, \
-            f"Normalised value {norm_val} outside [0,1]"
+        assert 0.0 <= norm_val <= 1.0, f"Normalised value {norm_val} outside [0,1]"

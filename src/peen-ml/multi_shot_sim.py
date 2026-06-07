@@ -55,6 +55,7 @@ CLI
 ---
     python multi_shot_sim.py --n_shots 80 --V 40 --D 0.0006 --plot
 """
+
 from __future__ import annotations
 
 import math
@@ -101,6 +102,7 @@ __all__ = [
 # 1.  Parameter container
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class MultiShotParams:
     """All parameters for a multi-shot simulation campaign.
@@ -134,17 +136,17 @@ class MultiShotParams:
 
     # Multi-shot pattern
     n_shots: int = 50
-    distribution: str = "random"          # 'random' | 'grid' | 'poisson' | 'checkerboard'
-    seed: Optional[int] = 42              # RNG seed for reproducibility (None = random)
+    distribution: str = "random"  # 'random' | 'grid' | 'poisson' | 'checkerboard'
+    seed: Optional[int] = 42  # RNG seed for reproducibility (None = random)
 
     # Shot scatter (realistic process variation)
-    V_scatter: float = 2.0                # m/s
-    angle_scatter: float = 0.05           # rad
-    D_scatter: float = 0.0               # m (0 = monodisperse)
+    V_scatter: float = 2.0  # m/s
+    angle_scatter: float = 0.05  # rad
+    D_scatter: float = 0.0  # m (0 = monodisperse)
 
     # Plate geometry
-    Lx: float = 0.010                     # m
-    Ly: float = 0.010                     # m
+    Lx: float = 0.010  # m
+    Ly: float = 0.010  # m
 
     # Mesh resolution
     Nx: int = 50
@@ -154,14 +156,15 @@ class MultiShotParams:
     min_sep_factor: float = 1.5
 
     # Checkerboard grid (used when distribution == 'checkerboard')
-    checkerboard_grid: int = 5            # NxN cells
-    checkerboard_intensity_min: float = 0.005   # min shots-per-cell intensity
-    checkerboard_intensity_max: float = 0.020   # max shots-per-cell intensity
+    checkerboard_grid: int = 5  # NxN cells
+    checkerboard_intensity_min: float = 0.005  # min shots-per-cell intensity
+    checkerboard_intensity_max: float = 0.020  # max shots-per-cell intensity
 
 
 # ---------------------------------------------------------------------------
 # 2.  Shot position generators
 # ---------------------------------------------------------------------------
+
 
 def generate_shot_positions(
     params: MultiShotParams,
@@ -194,10 +197,13 @@ def generate_shot_positions(
 
     # ----- Generate (x, y) -----
     if dist == "random":
-        centres = np.stack([
-            rng.uniform(0, Lx, n),
-            rng.uniform(0, Ly, n),
-        ], axis=1)
+        centres = np.stack(
+            [
+                rng.uniform(0, Lx, n),
+                rng.uniform(0, Ly, n),
+            ],
+            axis=1,
+        )
 
     elif dist == "grid":
         cols = max(1, int(math.sqrt(n * Lx / Ly)))
@@ -216,8 +222,7 @@ def generate_shot_positions(
         # Add small jitter (± half cell size)
         jitter_x = Lx / (2 * cols) * 0.5
         jitter_y = Ly / (2 * rows) * 0.5
-        centres = centres + rng.uniform([-jitter_x, -jitter_y],
-                                        [jitter_x, jitter_y], centres.shape)
+        centres = centres + rng.uniform([-jitter_x, -jitter_y], [jitter_x, jitter_y], centres.shape)
         centres = np.clip(centres, [0, 0], [Lx, Ly])
 
     elif dist == "poisson":
@@ -225,15 +230,12 @@ def generate_shot_positions(
 
     elif dist == "checkerboard":
         if checkerboard is None:
-            raise ValueError(
-                "checkerboard array must be supplied for distribution='checkerboard'."
-            )
+            raise ValueError("checkerboard array must be supplied for distribution='checkerboard'.")
         centres = checkerboard_to_shots(checkerboard, Lx, Ly, n, rng)
 
     else:
         raise ValueError(
-            f"Unknown distribution '{params.distribution}'. "
-            "Choose 'random', 'grid', 'poisson', or 'checkerboard'."
+            f"Unknown distribution '{params.distribution}'. " "Choose 'random', 'grid', 'poisson', or 'checkerboard'."
         )
 
     n_actual = len(centres)
@@ -257,7 +259,10 @@ def generate_shot_positions(
 
 
 def _poisson_disk(
-    Lx: float, Ly: float, min_dist: float, n_target: int,
+    Lx: float,
+    Ly: float,
+    min_dist: float,
+    n_target: int,
     rng: np.random.Generator,
 ) -> np.ndarray:
     """Bridson's algorithm for Poisson-disk sampling in a 2-D rectangle."""
@@ -296,8 +301,7 @@ def _poisson_disk(
             angle = rng.uniform(0, 2 * math.pi)
             radius = rng.uniform(min_dist, 2.0 * min_dist)
             candidate = pt + np.array([radius * math.cos(angle), radius * math.sin(angle)])
-            if (0 <= candidate[0] <= Lx and 0 <= candidate[1] <= Ly
-                    and not too_close(candidate, grid)):
+            if 0 <= candidate[0] <= Lx and 0 <= candidate[1] <= Ly and not too_close(candidate, grid):
                 samples.append(candidate)
                 active.append(candidate)
                 grid[grid_coords(candidate)] = candidate
@@ -316,6 +320,7 @@ def _poisson_disk(
 # ---------------------------------------------------------------------------
 # 3.  Checkerboard ↔ shot-positions conversion
 # ---------------------------------------------------------------------------
+
 
 def checkerboard_to_shots(
     checkerboard: np.ndarray,
@@ -349,12 +354,11 @@ def checkerboard_to_shots(
     total_intensity = cb.sum()
     if total_intensity <= 0:
         # Uniform fallback
-        return np.stack([rng.uniform(0, Lx, n_total),
-                         rng.uniform(0, Ly, n_total)], axis=1)
+        return np.stack([rng.uniform(0, Lx, n_total), rng.uniform(0, Ly, n_total)], axis=1)
 
     # Number of shots per cell (proportional to intensity)
     probs = cb.ravel() / total_intensity
-    n_per_cell = rng.multinomial(n_total, probs)   # shape (G*G,)
+    n_per_cell = rng.multinomial(n_total, probs)  # shape (G*G,)
 
     cell_w = Lx / G_cols
     cell_h = Ly / G_rows
@@ -406,7 +410,7 @@ def displacements_to_checkerboard(
     cell_w = Lx / G
     cell_h = Ly / G
 
-    uz = np.abs(displacements[:, 2])   # surface normal deformation
+    uz = np.abs(displacements[:, 2])  # surface normal deformation
 
     for i, (coord, u) in enumerate(zip(node_coords, uz)):
         col = min(G - 1, int(coord[0] / cell_w))
@@ -428,6 +432,7 @@ def displacements_to_checkerboard(
 # ---------------------------------------------------------------------------
 # 4.  Coverage estimation
 # ---------------------------------------------------------------------------
+
 
 def compute_coverage(
     displacements: np.ndarray,
@@ -477,39 +482,40 @@ def compute_coverage(
     # C = 1 - exp(-sum_i(A_i / A_surface))
     # where A_i = pi * r_p_i^2 is the plastic zone area of shot i.
     if centres is not None and len(centres) > 0:
-        A_single = math.pi * r_p ** 2
-        k_single  = A_single / A_surface           # single-shot coverage fraction
-        n_shots   = len(centres)
-        avrami_C  = 1.0 - math.exp(-k_single * n_shots)
+        A_single = math.pi * r_p**2
+        k_single = A_single / A_surface  # single-shot coverage fraction
+        n_shots = len(centres)
+        avrami_C = 1.0 - math.exp(-k_single * n_shots)
     else:
-        avrami_C  = 0.0
-        k_single  = 0.0
+        avrami_C = 0.0
+        k_single = 0.0
 
     # ---- Node-count method (mesh-resolution dependent) ----
     uz = np.abs(displacements[:, 2])
     surface_mask = np.abs(node_coords[:, 2]) < 1e-9
     uz_surf = uz[surface_mask]
-    n_total  = len(uz_surf)
+    n_total = len(uz_surf)
     n_peened = int(np.sum(uz_surf > threshold))
-    node_C   = n_peened / n_total if n_total > 0 else 0.0
+    node_C = n_peened / n_total if n_total > 0 else 0.0
 
     # Use Avrami as primary if centres were supplied, else fall back to nodes
     primary_C = avrami_C if centres is not None else node_C
 
     return {
-        "coverage_fraction":       primary_C,
-        "coverage_percent":        primary_C * 100.0,
+        "coverage_fraction": primary_C,
+        "coverage_percent": primary_C * 100.0,
         "coverage_fraction_nodes": node_C,
-        "n_peened":                n_peened,
-        "n_total":                 n_total,
-        "avrami_k":                k_single,
-        "threshold_m":             threshold,
+        "n_peened": n_peened,
+        "n_total": n_total,
+        "avrami_k": k_single,
+        "threshold_m": threshold,
     }
 
 
 # ---------------------------------------------------------------------------
 # 5.  Main multi-shot runner
 # ---------------------------------------------------------------------------
+
 
 def run_multi_shot_simulation(
     params: Optional[MultiShotParams] = None,
@@ -561,21 +567,26 @@ def run_multi_shot_simulation(
     # ---- 1. Mesh ----
     _log(f"[1/5] Building mesh ({params.Nx}x{params.Ny} elements) ...")
     mesh = generate_mesh(
-        Lx=params.Lx, Ly=params.Ly, Lz=0.002,
-        Nx=params.Nx, Ny=params.Ny, Nz=1,
+        Lx=params.Lx,
+        Ly=params.Ly,
+        Lz=0.002,
+        Nx=params.Nx,
+        Ny=params.Ny,
+        Nz=1,
     )
     N_nodes = len(mesh["node_labels"])
     N_elems = len(mesh["element_labels"])
     _log(f"      {N_nodes} nodes, {N_elems} elements")
 
     # ---- 2. Shot positions ----
-    _log(f"[2/5] Generating {params.n_shots} shot positions "
-         f"(mode='{params.distribution}') ...")
+    _log(f"[2/5] Generating {params.n_shots} shot positions " f"(mode='{params.distribution}') ...")
     centres, V_vec, D_vec = generate_shot_positions(params, checkerboard, rng)
     n_actual = len(centres)
     _log(f"      Actual shots placed: {n_actual}")
-    _log(f"      V range: {V_vec.min():.1f}-{V_vec.max():.1f} m/s  "
-         f"  D range: {D_vec.min()*1e3:.3f}-{D_vec.max()*1e3:.3f} mm")
+    _log(
+        f"      V range: {V_vec.min():.1f}-{V_vec.max():.1f} m/s  "
+        f"  D range: {D_vec.min()*1e3:.3f}-{D_vec.max()*1e3:.3f} mm"
+    )
 
     # ---- 3. Single-shot precomputation (shared stress profile) ----
     # Compute one representative stress profile for depth superposition
@@ -592,31 +603,38 @@ def run_multi_shot_simulation(
     stress_total = np.zeros((N_elems, 4), dtype=np.float64)
 
     energy_list = []
-    sR_profiles = []   # collect representative depth profiles
-    plastic_ref = plastic0   # use representative plastic zone for coverage
-    per_shot_physics = []    # collect per-shot physics for physics checkerboard
+    sR_profiles = []  # collect representative depth profiles
+    plastic_ref = plastic0  # use representative plastic zone for coverage
+    per_shot_physics = []  # collect per-shot physics for physics checkerboard
 
     for i, (centre, V_i, D_i) in enumerate(zip(centres, V_vec, D_vec)):
         # Build per-shot params (most fields shared, V and D can vary)
         p_i = ShotPeenParams(
-            E_s=bp.E_s, nu_s=bp.nu_s, D=D_i, rho_s=bp.rho_s,
-            E_b=bp.E_b, nu_b=bp.nu_b,
-            sigma_yield=bp.sigma_yield, c=bp.c,
-            V=V_i, phi=bp.phi, k=bp.k,
+            E_s=bp.E_s,
+            nu_s=bp.nu_s,
+            D=D_i,
+            rho_s=bp.rho_s,
+            E_b=bp.E_b,
+            nu_b=bp.nu_b,
+            sigma_yield=bp.sigma_yield,
+            c=bp.c,
+            V=V_i,
+            phi=bp.phi,
+            k=bp.k,
             n_depth=max(1000, bp.n_depth // 100),  # coarser for speed
         )
 
         contact_i = compute_contact_params(p_i)
         plastic_i = compute_plastic_zone(p_i)
-        sf_i      = compute_stress_field(contact_i, p_i)
-        energy_i  = compute_energy_balance(p_i, contact_i, plastic_i)
+        sf_i = compute_stress_field(contact_i, p_i)
+        energy_i = compute_energy_balance(p_i, contact_i, plastic_i)
 
         ic = np.array([centre[0], centre[1], 0.0])
 
-        _, disp_i   = map_displacements(mesh, contact_i, plastic_i, p_i, ic)
+        _, disp_i = map_displacements(mesh, contact_i, plastic_i, p_i, ic)
         _, stress_i = map_stresses(mesh, sf_i, plastic_i, p_i, ic)
 
-        disp_total   += disp_i.astype(np.float64)
+        disp_total += disp_i.astype(np.float64)
         stress_total += stress_i.astype(np.float64)
 
         energy_list.append(energy_i)
@@ -626,84 +644,73 @@ def run_multi_shot_simulation(
         # Collect physics for multi-channel checkerboard
         a_p_i = plastic_i["a_p"]
         r_p_i = plastic_i["r_p"]
-        delta_p_i = a_p_i ** 2 / (2.0 * p_i.R) if p_i.R > 0 else 0.0
+        delta_p_i = a_p_i**2 / (2.0 * p_i.R) if p_i.R > 0 else 0.0
         sigma_R_surface_i = float(sf_i["sR"][0]) if len(sf_i["sR"]) > 0 else 0.0
-        per_shot_physics.append({
-            "x":               float(centre[0]),
-            "y":               float(centre[1]),
-            "V_n":             float(p_i.Vn),
-            "D":               float(D_i),
-            "rho_s":           float(bp.rho_s),
-            "a_p":             float(a_p_i),
-            "r_p":             float(r_p_i),
-            "delta_p":         float(delta_p_i),
-            "sigma_R_surface": float(sigma_R_surface_i),
-            "sR_depth":        sR_profile_i,   # (K, 2): col0=depth, col1=sigma_R
-        })
+        per_shot_physics.append(
+            {
+                "x": float(centre[0]),
+                "y": float(centre[1]),
+                "V_n": float(p_i.Vn),
+                "D": float(D_i),
+                "rho_s": float(bp.rho_s),
+                "a_p": float(a_p_i),
+                "r_p": float(r_p_i),
+                "delta_p": float(delta_p_i),
+                "sigma_R_surface": float(sigma_R_surface_i),
+                "sR_depth": sR_profile_i,  # (K, 2): col0=depth, col1=sigma_R
+            }
+        )
 
         if verbose and (i + 1) % max(1, n_actual // 10) == 0:
             _log(f"      {i+1}/{n_actual} shots processed ...")
 
-    disp_total_f32   = disp_total.astype(np.float32)
+    disp_total_f32 = disp_total.astype(np.float32)
     stress_total_f32 = stress_total.astype(np.float32)
 
     # Mean depth profile across all shots (for analysis/plotting)
     min_len = min(p.shape[0] for p in sR_profiles)
     sR_stack = np.stack([p[:min_len, :] for p in sR_profiles], axis=0)  # (N, L, 2)
-    sR_mean  = sR_stack.mean(axis=0)     # (L, 2): col-0 = depth, col-1 = mean σR
+    sR_mean = sR_stack.mean(axis=0)  # (L, 2): col-0 = depth, col-1 = mean σR
 
     # ---- 5. Coverage & Almen intensity ----
     coverage_info = compute_coverage(
-        disp_total_f32, plastic0, mesh["node_coords"], params.Lx, params.Ly,
+        disp_total_f32,
+        plastic0,
+        mesh["node_coords"],
+        params.Lx,
+        params.Ly,
         centres=centres,
     )
     # Almen intensity proxy: peak compressive residual stress in MPa
     almen_MPa = float(np.min(stress_total_f32[:, 0]) / 1e6)
 
-    _log(f"[5/5] Coverage: {coverage_info['coverage_percent']:.1f}%  |  "
-         f"Almen proxy: {almen_MPa:.1f} MPa")
+    _log(f"[5/5] Coverage: {coverage_info['coverage_percent']:.1f}%  |  " f"Almen proxy: {almen_MPa:.1f} MPa")
 
     # ---- Auto-generate checkerboard summary if not supplied ----
     if checkerboard is None:
-        cb_summary = displacements_to_checkerboard(
-            disp_total_f32, mesh["node_coords"], params.Lx, params.Ly, grid_size
-        )
+        cb_summary = displacements_to_checkerboard(disp_total_f32, mesh["node_coords"], params.Lx, params.Ly, grid_size)
     else:
         cb_summary = np.asarray(checkerboard, dtype=np.float32)
     # Also create a shot-density map as the ML input checkerboard
-    shot_density_cb = _shots_to_density_map(
-        centres, params.Lx, params.Ly, grid_size
-    )
+    shot_density_cb = _shots_to_density_map(centres, params.Lx, params.Ly, grid_size)
 
     # ---- Save ----
     if save_npy:
         os.makedirs(output_dir, exist_ok=True)
         _log(f"      Saving .npy to: {output_dir} ...")
 
-        np.save(os.path.join(output_dir, "node_labels.npy"),
-                mesh["node_labels"])
-        np.save(os.path.join(output_dir, "node_coords.npy"),
-                mesh["node_coords"])
-        np.save(os.path.join(output_dir, "element_labels.npy"),
-                mesh["element_labels"])
-        np.save(os.path.join(output_dir, "element_connectivity.npy"),
-                mesh["element_connectivity"])
-        np.save(os.path.join(output_dir, "disp_node_labels.npy"),
-                mesh["node_labels"])
-        np.save(os.path.join(output_dir, "displacements.npy"),
-                disp_total_f32)
-        np.save(os.path.join(output_dir, "stress_element_labels.npy"),
-                mesh["element_labels"])
-        np.save(os.path.join(output_dir, "stresses.npy"),
-                stress_total_f32)
-        np.save(os.path.join(output_dir, "sR_depth_profile.npy"),
-                sR_mean)
-        np.save(os.path.join(output_dir, "shot_positions.npy"),
-                centres)
-        np.save(os.path.join(output_dir, "checkerboard.npy"),
-                shot_density_cb)
-        np.save(os.path.join(output_dir, "checkerboard_deformation.npy"),
-                cb_summary)
+        np.save(os.path.join(output_dir, "node_labels.npy"), mesh["node_labels"])
+        np.save(os.path.join(output_dir, "node_coords.npy"), mesh["node_coords"])
+        np.save(os.path.join(output_dir, "element_labels.npy"), mesh["element_labels"])
+        np.save(os.path.join(output_dir, "element_connectivity.npy"), mesh["element_connectivity"])
+        np.save(os.path.join(output_dir, "disp_node_labels.npy"), mesh["node_labels"])
+        np.save(os.path.join(output_dir, "displacements.npy"), disp_total_f32)
+        np.save(os.path.join(output_dir, "stress_element_labels.npy"), mesh["element_labels"])
+        np.save(os.path.join(output_dir, "stresses.npy"), stress_total_f32)
+        np.save(os.path.join(output_dir, "sR_depth_profile.npy"), sR_mean)
+        np.save(os.path.join(output_dir, "shot_positions.npy"), centres)
+        np.save(os.path.join(output_dir, "checkerboard.npy"), shot_density_cb)
+        np.save(os.path.join(output_dir, "checkerboard_deformation.npy"), cb_summary)
 
         # Coverage summary text
         with open(os.path.join(output_dir, "coverage_report.txt"), "w") as fh:
@@ -715,32 +722,31 @@ def run_multi_shot_simulation(
 
         _log("      Done.")
 
-
     _log("=" * 62)
 
     return {
-        "params":              params,
-        "mesh":                mesh,
-        "centres":             centres,
-        "V_vec":               V_vec,
-        "D_vec":               D_vec,
-        "node_labels":         mesh["node_labels"],
-        "node_coords":         mesh["node_coords"],
-        "elem_labels":         mesh["element_labels"],
+        "params": params,
+        "mesh": mesh,
+        "centres": centres,
+        "V_vec": V_vec,
+        "D_vec": D_vec,
+        "node_labels": mesh["node_labels"],
+        "node_coords": mesh["node_coords"],
+        "elem_labels": mesh["element_labels"],
         "element_connectivity": mesh["element_connectivity"],
-        "displacements":       disp_total_f32,
-        "stresses":            stress_total_f32,
-        "sR_depth_profile":    sR_mean,
-        "energy_list":         energy_list,
-        "coverage":            coverage_info,
-        "coverage_fraction":   coverage_info["coverage_fraction"],
+        "displacements": disp_total_f32,
+        "stresses": stress_total_f32,
+        "sR_depth_profile": sR_mean,
+        "energy_list": energy_list,
+        "coverage": coverage_info,
+        "coverage_fraction": coverage_info["coverage_fraction"],
         "almen_intensity_MPa": almen_MPa,
-        "checkerboard":        shot_density_cb,
+        "checkerboard": shot_density_cb,
         "checkerboard_deformation": cb_summary,
-        "plastic_ref":         plastic0,
-        "contact_ref":         contact0,
-        "per_shot_physics":    per_shot_physics,
-        "E_b":                 bp.E_b,
+        "plastic_ref": plastic0,
+        "contact_ref": contact0,
+        "per_shot_physics": per_shot_physics,
+        "E_b": bp.E_b,
     }
 
 
@@ -768,6 +774,7 @@ def _shots_to_density_map(
 # ---------------------------------------------------------------------------
 # 6.  Physics-rich multi-channel sector encoding
 # ---------------------------------------------------------------------------
+
 
 def compute_physics_checkerboard(
     per_shot_physics: List[Dict],
@@ -807,12 +814,12 @@ def compute_physics_checkerboard(
     A_cell = cell_w * cell_h
 
     # Raw accumulators (unnormalised)
-    n_shots_grid   = np.zeros((G, G), dtype=np.float64)  # ch 0
-    energy_grid    = np.zeros((G, G), dtype=np.float64)  # ch 1
-    dent_grid      = np.zeros((G, G), dtype=np.float64)  # ch 2
-    stress_grid    = np.zeros((G, G), dtype=np.float64)  # ch 3
-    rp2_grid       = np.zeros((G, G), dtype=np.float64)  # for coverage (ch 4)
-    bimoment_grid  = np.zeros((G, G), dtype=np.float64)  # ch 5
+    n_shots_grid = np.zeros((G, G), dtype=np.float64)  # ch 0
+    energy_grid = np.zeros((G, G), dtype=np.float64)  # ch 1
+    dent_grid = np.zeros((G, G), dtype=np.float64)  # ch 2
+    stress_grid = np.zeros((G, G), dtype=np.float64)  # ch 3
+    rp2_grid = np.zeros((G, G), dtype=np.float64)  # for coverage (ch 4)
+    bimoment_grid = np.zeros((G, G), dtype=np.float64)  # ch 5
 
     for sp in per_shot_physics:
         col = min(G - 1, int(sp["x"] / cell_w))
@@ -830,10 +837,10 @@ def compute_physics_checkerboard(
         rp2_grid[row, col] += sp["r_p"] ** 2
 
         # Bending moment per shot: ∫ σ_R(z) · z dz  (trapezoidal)
-        depth_prof = sp["sR_depth"]    # (K, 2): depth, sigma_R
+        depth_prof = sp["sR_depth"]  # (K, 2): depth, sigma_R
         if depth_prof.shape[0] > 1:
-            z_arr   = depth_prof[:, 0]
-            sR_arr  = depth_prof[:, 1]
+            z_arr = depth_prof[:, 0]
+            sR_arr = depth_prof[:, 1]
             bm = float(np.trapz(sR_arr * z_arr, z_arr))
         else:
             bm = 0.0
@@ -843,19 +850,24 @@ def compute_physics_checkerboard(
     coverage_grid = 1.0 - np.exp(-math.pi * rp2_grid / A_cell)
 
     # Normalise per-cell density quantities by cell area
-    energy_grid   /= A_cell
-    stress_grid    /= A_cell
-    bimoment_grid  /= A_cell
+    energy_grid /= A_cell
+    stress_grid /= A_cell
+    bimoment_grid /= A_cell
 
     # Stack channels
-    raw = np.stack([
-        n_shots_grid,
-        energy_grid,
-        dent_grid,
-        stress_grid,
-        coverage_grid,
-        bimoment_grid,
-    ], axis=0).astype(np.float64)   # (6, G, G)
+    raw = np.stack(
+        [
+            n_shots_grid,
+            energy_grid,
+            dent_grid,
+            stress_grid,
+            coverage_grid,
+            bimoment_grid,
+        ],
+        axis=0,
+    ).astype(
+        np.float64
+    )  # (6, G, G)
 
     # Normalise each channel independently to [0, 1]
     out = np.zeros_like(raw, dtype=np.float32)
@@ -867,18 +879,19 @@ def compute_physics_checkerboard(
         else:
             out[c] = np.zeros_like(ch, dtype=np.float32)
 
-    return out   # (6, G, G)
+    return out  # (6, G, G)
 
 
 # ---------------------------------------------------------------------------
 # 7.  Node-resolution influence fields from shot positions
 # ---------------------------------------------------------------------------
 
+
 def compute_influence_fields(
     shot_positions: np.ndarray,
-    node_coords:    np.ndarray,
-    a_p:  float,
-    r_p:  float,
+    node_coords: np.ndarray,
+    a_p: float,
+    r_p: float,
     delta_p: float,
     Nx: int,
     Ny: int,
@@ -918,29 +931,29 @@ def compute_influence_fields(
     if len(shot_positions) == 0:
         return np.zeros((4, Nx + 1, Ny + 1), dtype=np.float32)
 
-    x_n = node_coords[:, 0].astype(np.float64)   # (N,)
+    x_n = node_coords[:, 0].astype(np.float64)  # (N,)
     y_n = node_coords[:, 1].astype(np.float64)
 
     x_s = shot_positions[:, 0].astype(np.float64)  # (M,)
     y_s = shot_positions[:, 1].astype(np.float64)
 
     # (N, M) vectors from nodes to shots
-    dx = x_s[None, :] - x_n[:, None]   # positive = shot is to the right of node
+    dx = x_s[None, :] - x_n[:, None]  # positive = shot is to the right of node
     dy = y_s[None, :] - y_n[:, None]
-    dist2 = dx ** 2 + dy ** 2
-    dist  = np.sqrt(dist2)
+    dist2 = dx**2 + dy**2
+    dist = np.sqrt(dist2)
 
     # Ch 0: Hertz contact depth (uz proxy) — parabolic kernel within contact radius
-    hertz = delta_p * np.maximum(0.0, 1.0 - dist2 / max(a_p ** 2, 1e-30))
-    ch0 = hertz.sum(axis=1)   # (N,)
+    hertz = delta_p * np.maximum(0.0, 1.0 - dist2 / max(a_p**2, 1e-30))
+    ch0 = hertz.sum(axis=1)  # (N,)
 
     # Ch 1: Gaussian KDE with σ=r_p (smooth density at FEM resolution)
-    ch1 = np.exp(-dist2 / max(2.0 * r_p ** 2, 1e-30)).sum(axis=1)  # (N,)
+    ch1 = np.exp(-dist2 / max(2.0 * r_p**2, 1e-30)).sum(axis=1)  # (N,)
 
     # Ch 2,3: Lateral force fields — shots push nodes away (sign: shot − node)
-    hat = np.maximum(0.0, 1.0 - dist / max(r_p, 1e-30))   # tent weight
-    ch2 = (dx * hat).sum(axis=1)   # (N,) — Fx (positive = pushed in +x)
-    ch3 = (dy * hat).sum(axis=1)   # (N,) — Fy
+    hat = np.maximum(0.0, 1.0 - dist / max(r_p, 1e-30))  # tent weight
+    ch2 = (dx * hat).sum(axis=1)  # (N,) — Fx (positive = pushed in +x)
+    ch3 = (dy * hat).sum(axis=1)  # (N,) — Fy
 
     def _norm_0_1(arr):
         lo, hi = arr.min(), arr.max()
@@ -957,12 +970,17 @@ def compute_influence_fields(
     def _reshape(flat):
         return flat.reshape(Nx + 1, Ny + 1)
 
-    fields = np.stack([
-        _reshape(_norm_0_1(ch0)),
-        _reshape(_norm_0_1(ch1)),
-        _reshape(_norm_signed(ch2)),
-        _reshape(_norm_signed(ch3)),
-    ], axis=0).astype(np.float32)   # (4, Nx+1, Ny+1)
+    fields = np.stack(
+        [
+            _reshape(_norm_0_1(ch0)),
+            _reshape(_norm_0_1(ch1)),
+            _reshape(_norm_signed(ch2)),
+            _reshape(_norm_signed(ch3)),
+        ],
+        axis=0,
+    ).astype(
+        np.float32
+    )  # (4, Nx+1, Ny+1)
 
     return fields
 
@@ -970,6 +988,7 @@ def compute_influence_fields(
 # ---------------------------------------------------------------------------
 # 8.  Cupping (global Almen arc-height) from residual stress depth profile
 # ---------------------------------------------------------------------------
+
 
 def compute_cupping_from_profile(
     sR_depth_profile: np.ndarray,
@@ -1000,27 +1019,27 @@ def compute_cupping_from_profile(
     if sR_depth_profile.shape[0] < 2:
         return 0.0
 
-    z   = sR_depth_profile[:, 0]
-    sR  = sR_depth_profile[:, 1]
+    z = sR_depth_profile[:, 0]
+    sR = sR_depth_profile[:, 1]
 
     # Clip integration to the plate thickness
     mask = z <= t_plate
     if mask.sum() < 2:
         mask = np.ones(len(z), dtype=bool)
-    z_t  = z[mask]
+    z_t = z[mask]
     sR_t = sR[mask]
 
     # Bending moment per unit width (N/m)
     M_b = float(np.trapz(sR_t * z_t, z_t))
 
     # Plate second moment of area per unit width (m³)
-    I_per_w = t_plate ** 3 / 12.0
+    I_per_w = t_plate**3 / 12.0
 
     # Curvature (1/m)
     kappa = M_b / (E_b * I_per_w) if E_b > 0 else 0.0
 
     # Midpoint arc-height (m)
-    arc_height = kappa * L_plate ** 2 / 8.0
+    arc_height = kappa * L_plate**2 / 8.0
 
     return float(arc_height)
 
@@ -1028,6 +1047,7 @@ def compute_cupping_from_profile(
 # ---------------------------------------------------------------------------
 # 8.  Element-to-nodal stress averaging
 # ---------------------------------------------------------------------------
+
 
 def element_to_nodal_stress(
     element_stresses: np.ndarray,
@@ -1050,8 +1070,8 @@ def element_to_nodal_stress(
     nodal_stresses : (num_nodes, 4) float32
     """
     n_comp = element_stresses.shape[1]
-    accum  = np.zeros((num_nodes, n_comp), dtype=np.float64)
-    count  = np.zeros(num_nodes, dtype=np.float64)
+    accum = np.zeros((num_nodes, n_comp), dtype=np.float64)
+    count = np.zeros(num_nodes, dtype=np.float64)
 
     for e_idx, nodes in enumerate(connectivity):
         for n_idx in nodes:
@@ -1070,6 +1090,7 @@ def element_to_nodal_stress(
 # 9.  Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot_results(results: Dict, show: bool = True, save_dir: Optional[str] = None) -> None:
     """Four-panel summary plot for a multi-shot simulation.
 
@@ -1082,12 +1103,12 @@ def plot_results(results: Dict, show: bool = True, save_dir: Optional[str] = Non
     import matplotlib.pyplot as plt
     from matplotlib.colors import Normalize
 
-    mesh   = results["mesh"]
-    coords = mesh["node_coords"]       # (N, 3)
-    disp   = results["displacements"]  # (N, 3)
-    centres= results["centres"]        # (M, 2)
-    sR     = results["sR_depth_profile"]   # (L, 2)
-    cb     = results["checkerboard"]   # (G, G)
+    mesh = results["mesh"]
+    coords = mesh["node_coords"]  # (N, 3)
+    disp = results["displacements"]  # (N, 3)
+    centres = results["centres"]  # (M, 2)
+    sR = results["sR_depth_profile"]  # (L, 2)
+    cb = results["checkerboard"]  # (G, G)
     Lx = results["params"].Lx
     Ly = results["params"].Ly
 
@@ -1113,7 +1134,7 @@ def plot_results(results: Dict, show: bool = True, save_dir: Optional[str] = Non
     x_edges = np.linspace(0, Lx, G_heat + 1)
     y_edges = np.linspace(0, Ly, G_heat + 1)
     heat = np.zeros((G_heat, G_heat))
-    cnt  = np.zeros((G_heat, G_heat), dtype=int)
+    cnt = np.zeros((G_heat, G_heat), dtype=int)
     for x, y, u in zip(xs_surf, ys_surf, uz_surf):
         ci = min(G_heat - 1, int(x / Lx * G_heat))
         ri = min(G_heat - 1, int(y / Ly * G_heat))
@@ -1122,8 +1143,7 @@ def plot_results(results: Dict, show: bool = True, save_dir: Optional[str] = Non
     mask = cnt > 0
     heat[mask] /= cnt[mask]
 
-    im = ax.imshow(heat * 1e6, origin="lower", extent=[0, Lx*1e3, 0, Ly*1e3],
-                   cmap="RdBu_r", aspect="equal")
+    im = ax.imshow(heat * 1e6, origin="lower", extent=[0, Lx * 1e3, 0, Ly * 1e3], cmap="RdBu_r", aspect="equal")
     plt.colorbar(im, ax=ax, label="uz (µm)")
     ax.set_title("Surface Displacement uz (µm)")
     ax.set_xlabel("X (mm)")
@@ -1131,22 +1151,29 @@ def plot_results(results: Dict, show: bool = True, save_dir: Optional[str] = Non
 
     # ---- [2] Shot positions ----
     ax = axs[1, 0]
-    ax.scatter(centres[:, 0] * 1e3, centres[:, 1] * 1e3,
-               s=4, color="firebrick", alpha=0.6)
+    ax.scatter(centres[:, 0] * 1e3, centres[:, 1] * 1e3, s=4, color="firebrick", alpha=0.6)
     ax.set_xlim(0, Lx * 1e3)
     ax.set_ylim(0, Ly * 1e3)
     ax.set_aspect("equal")
-    ax.set_title(f"Shot Positions (N={len(centres)})\n"
-                 f"Coverage: {results['coverage']['coverage_percent']:.1f}%  |  "
-                 f"Almen: {results['almen_intensity_MPa']:.0f} MPa")
+    ax.set_title(
+        f"Shot Positions (N={len(centres)})\n"
+        f"Coverage: {results['coverage']['coverage_percent']:.1f}%  |  "
+        f"Almen: {results['almen_intensity_MPa']:.0f} MPa"
+    )
     ax.set_xlabel("X (mm)")
     ax.set_ylabel("Y (mm)")
 
     # ---- [3] Shot-density checkerboard ----
     ax = axs[1, 1]
-    im2 = ax.imshow(cb, origin="lower", cmap="viridis", aspect="equal",
-                    extent=[0, Lx*1e3, 0, Ly*1e3],
-                    vmin=0, vmax=cb.max() or 1.0)
+    im2 = ax.imshow(
+        cb,
+        origin="lower",
+        cmap="viridis",
+        aspect="equal",
+        extent=[0, Lx * 1e3, 0, Ly * 1e3],
+        vmin=0,
+        vmax=cb.max() or 1.0,
+    )
     plt.colorbar(im2, ax=ax, label="Normalised shot density")
     ax.set_title("Shot Density Checkerboard (ML input)")
     ax.set_xlabel("X (mm)")
@@ -1156,13 +1183,13 @@ def plot_results(results: Dict, show: bool = True, save_dir: Optional[str] = Non
         f"Multi-Shot Simulation  |  N={len(centres)} shots  |  "
         f"V={results['params'].base_params.V:.0f} m/s  |  "
         f"D={results['params'].base_params.D*1e3:.2f} mm",
-        fontsize=12, fontweight="bold"
+        fontsize=12,
+        fontweight="bold",
     )
     fig.tight_layout()
 
     if save_dir:
-        fig.savefig(os.path.join(save_dir, "multi_shot_summary.png"),
-                    dpi=150, bbox_inches="tight")
+        fig.savefig(os.path.join(save_dir, "multi_shot_summary.png"), dpi=150, bbox_inches="tight")
 
     if show:
         plt.show()
@@ -1175,23 +1202,20 @@ def plot_results(results: Dict, show: bool = True, save_dir: Optional[str] = Non
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Multi-shot peening simulation (analytical superposition)."
-    )
-    parser.add_argument("--output",      default="./multi_shot_output")
-    parser.add_argument("--n_shots",     type=int,   default=50)
-    parser.add_argument("--V",           type=float, default=35.9)
-    parser.add_argument("--D",           type=float, default=0.0005)
-    parser.add_argument("--Lx",          type=float, default=0.010)
-    parser.add_argument("--Ly",          type=float, default=0.010)
-    parser.add_argument("--Nx",          type=int,   default=50)
-    parser.add_argument("--Ny",          type=int,   default=50)
-    parser.add_argument("--dist",        default="random",
-                        choices=["random", "grid", "poisson", "checkerboard"])
-    parser.add_argument("--seed",        type=int,   default=42)
-    parser.add_argument("--V_scatter",   type=float, default=2.0)
-    parser.add_argument("--grid_size",   type=int,   default=5)
-    parser.add_argument("--plot",        action="store_true")
+    parser = argparse.ArgumentParser(description="Multi-shot peening simulation (analytical superposition).")
+    parser.add_argument("--output", default="./multi_shot_output")
+    parser.add_argument("--n_shots", type=int, default=50)
+    parser.add_argument("--V", type=float, default=35.9)
+    parser.add_argument("--D", type=float, default=0.0005)
+    parser.add_argument("--Lx", type=float, default=0.010)
+    parser.add_argument("--Ly", type=float, default=0.010)
+    parser.add_argument("--Nx", type=int, default=50)
+    parser.add_argument("--Ny", type=int, default=50)
+    parser.add_argument("--dist", default="random", choices=["random", "grid", "poisson", "checkerboard"])
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--V_scatter", type=float, default=2.0)
+    parser.add_argument("--grid_size", type=int, default=5)
+    parser.add_argument("--plot", action="store_true")
     args = parser.parse_args()
 
     bp = ShotPeenParams(V=args.V, D=args.D)
@@ -1201,8 +1225,10 @@ if __name__ == "__main__":
         distribution=args.dist,
         seed=args.seed,
         V_scatter=args.V_scatter,
-        Lx=args.Lx, Ly=args.Ly,
-        Nx=args.Nx, Ny=args.Ny,
+        Lx=args.Lx,
+        Ly=args.Ly,
+        Nx=args.Nx,
+        Ny=args.Ny,
     )
 
     results = run_multi_shot_simulation(

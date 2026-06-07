@@ -16,6 +16,7 @@ Usage
     python stress_test_benchmark.py --n_sims 40 --epochs 30   # more data
     python stress_test_benchmark.py --output ./MyBench --quick # 5 sims/config
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,7 +32,7 @@ from typing import List, Optional
 # Path setup — works whether run from repo root or any other CWD
 # ---------------------------------------------------------------------------
 _HERE = Path(__file__).resolve().parent
-_SRC  = _HERE / "src" / "peen-ml"
+_SRC = _HERE / "src" / "peen-ml"
 for _p in [str(_SRC), str(_HERE)]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -50,9 +51,11 @@ from materials import WORKPIECE_MATERIALS, SHOT_MATERIALS
 # Benchmark configuration
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class BenchConfig:
     """One benchmark run specification."""
+
     label: str
     workpiece: str
     shot: str
@@ -72,62 +75,89 @@ def build_configs(n_sims: int) -> List[BenchConfig]:
 
     # ---- 25 material combos (standard resolution) ----
     workpieces = sorted(WORKPIECE_MATERIALS.keys())
-    shots      = sorted(SHOT_MATERIALS.keys())
+    shots = sorted(SHOT_MATERIALS.keys())
     for wp in workpieces:
         for sp in shots:
-            configs.append(BenchConfig(
-                label            = f"{wp}__{sp}".replace("-", "_").replace(" ", "_"),
-                workpiece        = wp,
-                shot             = sp,
-                n_sims           = n_sims,
-                Nx               = 50,
-                Ny               = 50,
-                checkerboard_size= 10,
-                V_range          = (25.0, 60.0),
-                D_range          = (0.0003, 0.0010),
-                n_shots_range    = (30, 150),
-                description      = f"Standard: {wp} + {sp}",
-            ))
+            configs.append(
+                BenchConfig(
+                    label=f"{wp}__{sp}".replace("-", "_").replace(" ", "_"),
+                    workpiece=wp,
+                    shot=sp,
+                    n_sims=n_sims,
+                    Nx=50,
+                    Ny=50,
+                    checkerboard_size=10,
+                    V_range=(25.0, 60.0),
+                    D_range=(0.0003, 0.0010),
+                    n_shots_range=(30, 150),
+                    description=f"Standard: {wp} + {sp}",
+                )
+            )
 
     # ---- 5 special configs ----
     special = [
         BenchConfig(
             label="Ti6Al4V__steel__highres",
-            workpiece="Ti-6Al-4V", shot="steel",
-            n_sims=n_sims, Nx=70, Ny=70, checkerboard_size=10,
-            V_range=(25.0, 60.0), D_range=(0.0003, 0.0010),
+            workpiece="Ti-6Al-4V",
+            shot="steel",
+            n_sims=n_sims,
+            Nx=70,
+            Ny=70,
+            checkerboard_size=10,
+            V_range=(25.0, 60.0),
+            D_range=(0.0003, 0.0010),
             n_shots_range=(30, 150),
             description="High-resolution mesh (71×71=5041 nodes)",
         ),
         BenchConfig(
             label="Al7075__tungsten__extreme_V",
-            workpiece="Al-7075-T6", shot="tungsten",
-            n_sims=n_sims, Nx=50, Ny=50, checkerboard_size=10,
-            V_range=(10.0, 80.0), D_range=(0.0003, 0.0010),
+            workpiece="Al-7075-T6",
+            shot="tungsten",
+            n_sims=n_sims,
+            Nx=50,
+            Ny=50,
+            checkerboard_size=10,
+            V_range=(10.0, 80.0),
+            D_range=(0.0003, 0.0010),
             n_shots_range=(30, 150),
             description="Wide velocity range (Al + tungsten)",
         ),
         BenchConfig(
             label="Inconel718__ceramic__dense_cb",
-            workpiece="Inconel-718", shot="ceramic",
-            n_sims=n_sims, Nx=50, Ny=50, checkerboard_size=15,
-            V_range=(25.0, 60.0), D_range=(0.0003, 0.0010),
+            workpiece="Inconel-718",
+            shot="ceramic",
+            n_sims=n_sims,
+            Nx=50,
+            Ny=50,
+            checkerboard_size=15,
+            V_range=(25.0, 60.0),
+            D_range=(0.0003, 0.0010),
             n_shots_range=(30, 150),
             description="Dense checkerboard G=15 (Inconel + ceramic)",
         ),
         BenchConfig(
             label="316LSS__glass__many_shots",
-            workpiece="316L-SS", shot="glass",
-            n_sims=n_sims, Nx=50, Ny=50, checkerboard_size=10,
-            V_range=(25.0, 60.0), D_range=(0.0003, 0.0010),
+            workpiece="316L-SS",
+            shot="glass",
+            n_sims=n_sims,
+            Nx=50,
+            Ny=50,
+            checkerboard_size=10,
+            V_range=(25.0, 60.0),
+            D_range=(0.0003, 0.0010),
             n_shots_range=(100, 400),
             description="High shot count (316L-SS + glass)",
         ),
         BenchConfig(
             label="4340Steel__cast_iron__small_D",
-            workpiece="4340-Steel", shot="cast_iron",
-            n_sims=n_sims, Nx=50, Ny=50, checkerboard_size=10,
-            V_range=(25.0, 60.0), D_range=(0.0001, 0.0004),
+            workpiece="4340-Steel",
+            shot="cast_iron",
+            n_sims=n_sims,
+            Nx=50,
+            Ny=50,
+            checkerboard_size=10,
+            V_range=(25.0, 60.0),
+            D_range=(0.0001, 0.0004),
             n_shots_range=(30, 150),
             description="Small diameter range (4340-Steel + cast_iron)",
         ),
@@ -141,6 +171,7 @@ def build_configs(n_sims: int) -> List[BenchConfig]:
 # Dataset generation
 # ---------------------------------------------------------------------------
 
+
 def generate_dataset(cfg: BenchConfig, output_root: str) -> dict:
     """Generate one dataset for *cfg* inside *output_root/cfg.label/*.
 
@@ -151,20 +182,20 @@ def generate_dataset(cfg: BenchConfig, output_root: str) -> dict:
     os.makedirs(dataset_dir, exist_ok=True)
 
     gp = GeneratorParams(
-        output_dir        = dataset_dir,
-        n_simulations     = cfg.n_sims,
-        start_index       = 0,
-        workers           = 1,  # Windows-safe sequential generation
-        Nx                = cfg.Nx,
-        Ny                = cfg.Ny,
-        checkerboard_size = cfg.checkerboard_size,
-        V_range           = cfg.V_range,
-        D_range           = cfg.D_range,
-        n_shots_range     = cfg.n_shots_range,
-        workpiece_material= cfg.workpiece,
-        shot_material     = cfg.shot,
-        vary_distribution = True,
-        base_seed         = abs(hash(cfg.label)) % (2**31),
+        output_dir=dataset_dir,
+        n_simulations=cfg.n_sims,
+        start_index=0,
+        workers=1,  # Windows-safe sequential generation
+        Nx=cfg.Nx,
+        Ny=cfg.Ny,
+        checkerboard_size=cfg.checkerboard_size,
+        V_range=cfg.V_range,
+        D_range=cfg.D_range,
+        n_shots_range=cfg.n_shots_range,
+        workpiece_material=cfg.workpiece,
+        shot_material=cfg.shot,
+        vary_distribution=True,
+        base_seed=abs(hash(cfg.label)) % (2**31),
     )
 
     t0 = time.perf_counter()
@@ -187,11 +218,11 @@ def generate_dataset(cfg: BenchConfig, output_root: str) -> dict:
     elapsed = time.perf_counter() - t0
     success = n_fail == 0 and n_ok > 0
     return {
-        "success":     success,
-        "n_sims_ok":   n_ok,
+        "success": success,
+        "n_sims_ok": n_ok,
         "n_sims_fail": n_fail,
-        "elapsed_s":   elapsed,
-        "error":       "; ".join(errors) if errors else None,
+        "elapsed_s": elapsed,
+        "error": "; ".join(errors) if errors else None,
         "dataset_dir": dataset_dir,
     }
 
@@ -200,22 +231,23 @@ def generate_dataset(cfg: BenchConfig, output_root: str) -> dict:
 # Training
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class TrainResult:
-    mse:            float = float("nan")
-    smape_pct:      float = float("nan")
-    rmse_um:        float = float("nan")
-    epochs_trained: int   = 0
-    train_time_s:   float = float("nan")
-    success:        bool  = False
-    error:          Optional[str] = None
+    mse: float = float("nan")
+    smape_pct: float = float("nan")
+    rmse_um: float = float("nan")
+    epochs_trained: int = 0
+    train_time_s: float = float("nan")
+    success: bool = False
+    error: Optional[str] = None
 
 
 def train_and_evaluate(
     dataset_dir: str,
-    epochs:      int = 30,
-    patience:    int = 8,
-    batch_size:  int = 12,
+    epochs: int = 30,
+    patience: int = 8,
+    batch_size: int = 12,
 ) -> TrainResult:
     """Load *dataset_dir*, train DisplacementPredictor, return metrics."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -225,10 +257,10 @@ def train_and_evaluate(
         num_nodes, cb_size = M.infer_dataset_shape(dataset_dir)
 
         train_loader, val_loader, test_loader, loaded_data = M.create_data_loaders(
-            base_folder      = dataset_dir,
-            load_files       = ("checkerboard", "displacements"),
-            batch_size       = batch_size,
-            load_material_features = False,
+            base_folder=dataset_dir,
+            load_files=("checkerboard", "displacements"),
+            batch_size=batch_size,
+            load_material_features=False,
         )
 
         # Guard against empty val/test loaders (degenerate split)
@@ -236,13 +268,13 @@ def train_and_evaluate(
             return TrainResult(
                 success=False,
                 error=f"Val split is empty (n_sims too small for batch_size={batch_size}). "
-                       "Increase n_sims to at least 7.",
+                "Increase n_sims to at least 7.",
             )
 
         model = M.create_model(
-            input_channels   = 1,
-            num_nodes        = num_nodes,
-            checkerboard_size= cb_size,
+            input_channels=1,
+            num_nodes=num_nodes,
+            checkerboard_size=cb_size,
         ).to(device)
 
         criterion = nn.MSELoss()
@@ -250,21 +282,21 @@ def train_and_evaluate(
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
         train_losses, val_losses = M.train_model(
-            model          = model,
-            train_loader   = train_loader,
-            val_loader     = val_loader,
-            criterion      = criterion,
-            optimizer      = optimizer,
-            scheduler      = scheduler,
-            epochs         = epochs,
-            patience       = patience,
-            device         = device,
-            plot_save_path = None,  # skip PNG in benchmark mode
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            criterion=criterion,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            epochs=epochs,
+            patience=patience,
+            device=device,
+            plot_save_path=None,  # skip PNG in benchmark mode
         )
 
-        mse   = M.evaluate_model(model, test_loader, criterion, device=device)
+        mse = M.evaluate_model(model, test_loader, criterion, device=device)
         smape = float("nan")
-        rmse  = float("nan")
+        rmse = float("nan")
         if not (mse != mse):  # not NaN
             # Collect all test predictions for RMSE (physical units)
             all_pred, all_true = [], []
@@ -276,27 +308,27 @@ def train_and_evaluate(
                     all_true.append(disp.numpy())
             pred_np = np.concatenate(all_pred)
             true_np = np.concatenate(all_true)
-            rmse    = float(np.sqrt(np.mean((pred_np - true_np) ** 2))) * 1e6  # µm
+            rmse = float(np.sqrt(np.mean((pred_np - true_np) ** 2))) * 1e6  # µm
             # sMAPE — guard against zero denominator
             denom = (np.abs(true_np) + np.abs(pred_np)) / 2.0
-            safe  = denom > 1e-15
+            safe = denom > 1e-15
             if safe.any():
                 smape = float(np.mean(np.abs(true_np[safe] - pred_np[safe]) / denom[safe])) * 100
 
         return TrainResult(
-            mse            = float(mse),
-            smape_pct      = smape,
-            rmse_um        = rmse,
-            epochs_trained = len(train_losses),
-            train_time_s   = time.perf_counter() - t0,
-            success        = True,
+            mse=float(mse),
+            smape_pct=smape,
+            rmse_um=rmse,
+            epochs_trained=len(train_losses),
+            train_time_s=time.perf_counter() - t0,
+            success=True,
         )
 
     except Exception as exc:  # noqa: BLE001
         return TrainResult(
-            success      = False,
-            train_time_s = time.perf_counter() - t0,
-            error        = str(exc),
+            success=False,
+            train_time_s=time.perf_counter() - t0,
+            error=str(exc),
         )
 
 
@@ -304,13 +336,26 @@ def train_and_evaluate(
 # Report
 # ---------------------------------------------------------------------------
 
+
 def write_report(rows: list, output_path: str) -> None:
     fieldnames = [
-        "label", "workpiece", "shot", "description",
-        "n_sims_ok", "n_sims_fail", "Nx", "Ny", "cb_size",
-        "gen_ok", "gen_s",
-        "train_ok", "mse", "smape_pct", "rmse_um",
-        "epochs_trained", "train_s",
+        "label",
+        "workpiece",
+        "shot",
+        "description",
+        "n_sims_ok",
+        "n_sims_fail",
+        "Nx",
+        "Ny",
+        "cb_size",
+        "gen_ok",
+        "gen_s",
+        "train_ok",
+        "mse",
+        "smape_pct",
+        "rmse_um",
+        "epochs_trained",
+        "train_s",
         "error",
     ]
     with open(output_path, "w", newline="") as fh:
@@ -332,6 +377,7 @@ def print_summary(rows: list) -> None:
     print(f"  Failed       : {len(fail)}")
 
     if ok:
+
         def _floats(key):
             vals = []
             for r in ok:
@@ -343,18 +389,19 @@ def print_summary(rows: list) -> None:
                     pass
             return vals
 
-        mses   = _floats("mse")
-        rmses  = _floats("rmse_um")
+        mses = _floats("mse")
+        rmses = _floats("rmse_um")
         smapes = _floats("smape_pct")
         if mses:
-            print(f"\n  MSE   -- min={min(mses):.3e}  max={max(mses):.3e}  "
-                  f"mean={sum(mses)/len(mses):.3e}")
+            print(f"\n  MSE   -- min={min(mses):.3e}  max={max(mses):.3e}  " f"mean={sum(mses)/len(mses):.3e}")
         if rmses:
-            print(f"  RMSE  -- min={min(rmses):.2f} um  max={max(rmses):.2f} um  "
-                  f"mean={sum(rmses)/len(rmses):.2f} um")
+            print(
+                f"  RMSE  -- min={min(rmses):.2f} um  max={max(rmses):.2f} um  " f"mean={sum(rmses)/len(rmses):.2f} um"
+            )
         if smapes:
-            print(f"  sMAPE -- min={min(smapes):.1f}%   max={max(smapes):.1f}%   "
-                  f"mean={sum(smapes)/len(smapes):.1f}%")
+            print(
+                f"  sMAPE -- min={min(smapes):.1f}%   max={max(smapes):.1f}%   " f"mean={sum(smapes)/len(smapes):.1f}%"
+            )
 
     if fail:
         print(f"\n  Failed configs:")
@@ -367,6 +414,7 @@ def print_summary(rows: list) -> None:
 # ---------------------------------------------------------------------------
 # Holes / anomaly detection
 # ---------------------------------------------------------------------------
+
 
 def detect_holes(rows: list) -> None:
     """Print any anomalies detected across the benchmark results."""
@@ -384,8 +432,10 @@ def detect_holes(rows: list) -> None:
         if not r.get("train_ok"):
             err = r.get("error", "")
             if "ZeroDivisionError" in err or "empty" in err.lower():
-                print(f"  [HOLE] {label}: empty val/test split — too few sims for "
-                      "70/15/15 ratio.  Minimum n_sims=7 needed.")
+                print(
+                    f"  [HOLE] {label}: empty val/test split — too few sims for "
+                    "70/15/15 ratio.  Minimum n_sims=7 needed."
+                )
             else:
                 print(f"  [HOLE] {label}: training failed — {err}")
             holes_found += 1
@@ -398,22 +448,28 @@ def detect_holes(rows: list) -> None:
             except (ValueError, TypeError):
                 return float("nan")
 
-        rmse  = _safe_float("rmse_um")
+        rmse = _safe_float("rmse_um")
         smape = _safe_float("smape_pct")
-        mse   = _safe_float("mse")
+        mse = _safe_float("mse")
 
         if rmse == rmse and rmse > 500:
-            print(f"  [WARN] {label}: RMSE={rmse:.0f} um -- suspiciously large "
-                  "(physical range ~1-50 um). Check dataset or training duration.")
+            print(
+                f"  [WARN] {label}: RMSE={rmse:.0f} um -- suspiciously large "
+                "(physical range ~1-50 um). Check dataset or training duration."
+            )
             holes_found += 1
 
         if smape != smape:
-            print(f"  [HOLE] {label}: sMAPE is NaN — likely zero displacement "
-                  "denominator. smape() in model.py lacks a zero-guard.")
+            print(
+                f"  [HOLE] {label}: sMAPE is NaN — likely zero displacement "
+                "denominator. smape() in model.py lacks a zero-guard."
+            )
             holes_found += 1
         elif smape > 150:
-            print(f"  [WARN] {label}: sMAPE={smape:.0f}% -- near-random predictions "
-                  "(ground truth may be near-zero, triggering sMAPE instability)")
+            print(
+                f"  [WARN] {label}: sMAPE={smape:.0f}% -- near-random predictions "
+                "(ground truth may be near-zero, triggering sMAPE instability)"
+            )
             holes_found += 1
 
         if mse != mse:
@@ -430,32 +486,23 @@ def detect_holes(rows: list) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="peen-ml stress-test benchmark — 30 material / condition configs."
-    )
-    parser.add_argument("--output",  default="./BenchmarkResults",
-                        help="Root output directory for datasets and report")
-    parser.add_argument("--n_sims",  type=int, default=30,
-                        help="Simulations per config (default 30)")
-    parser.add_argument("--epochs",  type=int, default=25,
-                        help="Max training epochs per config (default 25)")
-    parser.add_argument("--patience",type=int, default=7,
-                        help="Early-stopping patience (default 7)")
-    parser.add_argument("--batch",   type=int, default=10,
-                        help="Training batch size (default 10)")
-    parser.add_argument("--quick",   action="store_true",
-                        help="Quick mode: 8 sims, 10 epochs")
-    parser.add_argument("--skip-gen", action="store_true",
-                        help="Skip generation (datasets already exist)")
-    parser.add_argument("--label",   default=None,
-                        help="Run only configs whose label contains this string")
+    parser = argparse.ArgumentParser(description="peen-ml stress-test benchmark — 30 material / condition configs.")
+    parser.add_argument("--output", default="./BenchmarkResults", help="Root output directory for datasets and report")
+    parser.add_argument("--n_sims", type=int, default=30, help="Simulations per config (default 30)")
+    parser.add_argument("--epochs", type=int, default=25, help="Max training epochs per config (default 25)")
+    parser.add_argument("--patience", type=int, default=7, help="Early-stopping patience (default 7)")
+    parser.add_argument("--batch", type=int, default=10, help="Training batch size (default 10)")
+    parser.add_argument("--quick", action="store_true", help="Quick mode: 8 sims, 10 epochs")
+    parser.add_argument("--skip-gen", action="store_true", help="Skip generation (datasets already exist)")
+    parser.add_argument("--label", default=None, help="Run only configs whose label contains this string")
     args = parser.parse_args()
 
     if args.quick:
-        args.n_sims  = 8
-        args.epochs  = 10
-        args.patience= 4
+        args.n_sims = 8
+        args.epochs = 10
+        args.patience = 4
 
     os.makedirs(args.output, exist_ok=True)
 
@@ -482,34 +529,41 @@ def main() -> None:
         print(f"         {cfg.description}")
 
         row: dict = {
-            "label":       cfg.label,
-            "workpiece":   cfg.workpiece,
-            "shot":        cfg.shot,
+            "label": cfg.label,
+            "workpiece": cfg.workpiece,
+            "shot": cfg.shot,
             "description": cfg.description,
-            "Nx":          cfg.Nx,
-            "Ny":          cfg.Ny,
-            "cb_size":     cfg.checkerboard_size,
+            "Nx": cfg.Nx,
+            "Ny": cfg.Ny,
+            "cb_size": cfg.checkerboard_size,
         }
 
         # ---- Generation ----
         if args.skip_gen:
-            gen_res = {"success": True, "n_sims_ok": cfg.n_sims,
-                       "n_sims_fail": 0, "elapsed_s": 0.0, "error": None,
-                       "dataset_dir": os.path.join(args.output, cfg.label)}
+            gen_res = {
+                "success": True,
+                "n_sims_ok": cfg.n_sims,
+                "n_sims_fail": 0,
+                "elapsed_s": 0.0,
+                "error": None,
+                "dataset_dir": os.path.join(args.output, cfg.label),
+            }
         else:
             print(f"         Generating {cfg.n_sims} simulations...")
             gen_res = generate_dataset(cfg, args.output)
 
-        row.update({
-            "n_sims_ok":   gen_res["n_sims_ok"],
-            "n_sims_fail": gen_res["n_sims_fail"],
-            "gen_ok":      gen_res["success"],
-            "gen_s":       f"{gen_res['elapsed_s']:.1f}",
-        })
+        row.update(
+            {
+                "n_sims_ok": gen_res["n_sims_ok"],
+                "n_sims_fail": gen_res["n_sims_fail"],
+                "gen_ok": gen_res["success"],
+                "gen_s": f"{gen_res['elapsed_s']:.1f}",
+            }
+        )
 
         if not gen_res["success"]:
             row["train_ok"] = False
-            row["error"]    = gen_res.get("error", "generation failed")
+            row["error"] = gen_res.get("error", "generation failed")
             print(f"         GENERATION FAILED: {row['error']}")
             rows.append(row)
             continue
@@ -520,26 +574,30 @@ def main() -> None:
         # ---- Training ----
         print(f"         Training (max {args.epochs} epochs, patience={args.patience})...")
         tr = train_and_evaluate(
-            dataset_dir = gen_res["dataset_dir"],
-            epochs      = args.epochs,
-            patience    = args.patience,
-            batch_size  = args.batch,
+            dataset_dir=gen_res["dataset_dir"],
+            epochs=args.epochs,
+            patience=args.patience,
+            batch_size=args.batch,
         )
 
-        row.update({
-            "train_ok":      tr.success,
-            "mse":           f"{tr.mse:.4e}" if tr.success else "nan",
-            "smape_pct":     f"{tr.smape_pct:.2f}" if tr.success else "nan",
-            "rmse_um":       f"{tr.rmse_um:.3f}" if tr.success else "nan",
-            "epochs_trained":tr.epochs_trained,
-            "train_s":       f"{tr.train_time_s:.1f}",
-            "error":         tr.error or "",
-        })
+        row.update(
+            {
+                "train_ok": tr.success,
+                "mse": f"{tr.mse:.4e}" if tr.success else "nan",
+                "smape_pct": f"{tr.smape_pct:.2f}" if tr.success else "nan",
+                "rmse_um": f"{tr.rmse_um:.3f}" if tr.success else "nan",
+                "epochs_trained": tr.epochs_trained,
+                "train_s": f"{tr.train_time_s:.1f}",
+                "error": tr.error or "",
+            }
+        )
 
         if tr.success:
-            print(f"         MSE={tr.mse:.3e}  RMSE={tr.rmse_um:.2f}um  "
-                  f"sMAPE={tr.smape_pct:.1f}%  epochs={tr.epochs_trained}  "
-                  f"time={tr.train_time_s:.0f}s")
+            print(
+                f"         MSE={tr.mse:.3e}  RMSE={tr.rmse_um:.2f}um  "
+                f"sMAPE={tr.smape_pct:.1f}%  epochs={tr.epochs_trained}  "
+                f"time={tr.train_time_s:.0f}s"
+            )
         else:
             print(f"         TRAINING FAILED: {tr.error}")
 

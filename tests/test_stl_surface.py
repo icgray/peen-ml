@@ -4,6 +4,7 @@ Tests for stl_surface.STLSurface.
 Uses a synthetic flat-plate STL (known normals = [0, 0, 1]) so tests are
 self-contained — no external .stl files required.
 """
+
 import math
 import os
 import struct
@@ -16,18 +17,19 @@ import pytest
 # Helper: create a minimal binary STL for a flat plate in the XY plane
 # -------------------------------------------------------------------
 
+
 def _write_flat_stl(path, Lx=0.04, Ly=0.04):
     """Write a binary STL with two right-angle triangles forming a flat XY plate."""
-    v0 = [0.0, 0.0,  0.0]
-    v1 = [Lx,  0.0,  0.0]
-    v2 = [Lx,  Ly,   0.0]
-    v3 = [0.0, Ly,   0.0]
+    v0 = [0.0, 0.0, 0.0]
+    v1 = [Lx, 0.0, 0.0]
+    v2 = [Lx, Ly, 0.0]
+    v3 = [0.0, Ly, 0.0]
     triangles = [
         ([0.0, 0.0, 1.0], v0, v1, v2),
         ([0.0, 0.0, 1.0], v0, v2, v3),
     ]
     with open(path, "wb") as fh:
-        fh.write(b"\x00" * 80)              # header
+        fh.write(b"\x00" * 80)  # header
         fh.write(struct.pack("<I", len(triangles)))
         for n, a, b, c in triangles:
             for val in n + a + b + c:
@@ -39,10 +41,11 @@ def _write_flat_stl(path, Lx=0.04, Ly=0.04):
 # Fixtures
 # -------------------------------------------------------------------
 
+
 @pytest.fixture(scope="module")
 def flat_stl_path():
     try:
-        import trimesh   # noqa: F401
+        import trimesh  # noqa: F401
     except ImportError:
         pytest.skip("trimesh not installed")
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -54,12 +57,14 @@ def flat_stl_path():
 @pytest.fixture(scope="module")
 def flat_surface(flat_stl_path):
     from stl_surface import STLSurface
+
     return STLSurface(flat_stl_path)
 
 
 # -------------------------------------------------------------------
 # Tests
 # -------------------------------------------------------------------
+
 
 class TestSTLSurfaceLoad:
     def test_vertex_count(self, flat_surface):
@@ -108,20 +113,20 @@ class TestShotProjection:
 
 class TestCheckerboard:
     def test_shape(self, flat_surface):
-        shots   = flat_surface.vertices[:5, :3]
+        shots = flat_surface.vertices[:5, :3]
         weights = np.ones(5, dtype=np.float32)
         cb = flat_surface.shots_to_checkerboard(shots, weights, G=5)
         assert cb.shape == (5, 5)
 
     def test_range(self, flat_surface):
-        shots   = flat_surface.vertices[:5, :3]
+        shots = flat_surface.vertices[:5, :3]
         weights = np.ones(5, dtype=np.float32)
         cb = flat_surface.shots_to_checkerboard(shots, weights, G=5)
         assert cb.min() >= 0.0
         assert cb.max() <= 1.0 + 1e-6
 
     def test_dtype(self, flat_surface):
-        shots   = flat_surface.vertices[:3, :3]
+        shots = flat_surface.vertices[:3, :3]
         weights = np.ones(3, dtype=np.float32)
         cb = flat_surface.shots_to_checkerboard(shots, weights, G=4)
         assert cb.dtype == np.float32
@@ -154,25 +159,27 @@ class TestRotationMatrices:
         R = flat_surface.vertex_normal_rotation_matrices()
         # For a flat plate (normals = [0,0,1]), R should be the identity
         for Ri in R:
-            np.testing.assert_allclose(Ri, np.eye(3), atol=1e-5,
-                                       err_msg="Flat-plate rotation should be identity")
+            np.testing.assert_allclose(Ri, np.eye(3), atol=1e-5, err_msg="Flat-plate rotation should be identity")
 
     def test_rotates_z_to_normal(self, flat_surface):
-        R       = flat_surface.vertex_normal_rotation_matrices()
-        z_hat   = np.array([0.0, 0.0, 1.0])
+        R = flat_surface.vertex_normal_rotation_matrices()
+        z_hat = np.array([0.0, 0.0, 1.0])
         normals = flat_surface.vertex_normals.astype(np.float64)
         for i, (Ri, ni) in enumerate(zip(R, normals)):
             rotated = Ri.astype(np.float64) @ z_hat
-            np.testing.assert_allclose(rotated, ni, atol=1e-4,
-                                       err_msg=f"Vertex {i}: R@z != normal")
+            np.testing.assert_allclose(rotated, ni, atol=1e-4, err_msg=f"Vertex {i}: R@z != normal")
 
 
 class TestSaveArrays:
     def test_saves_all_files(self, flat_surface):
         with tempfile.TemporaryDirectory() as tmpdir:
             flat_surface.save_arrays(tmpdir)
-            for fname in ["node_coords.npy", "node_labels.npy",
-                          "element_connectivity.npy", "element_labels.npy",
-                          "stl_vertex_normals.npy", "stl_face_normals.npy"]:
-                assert os.path.exists(os.path.join(tmpdir, fname)), \
-                    f"Missing file: {fname}"
+            for fname in [
+                "node_coords.npy",
+                "node_labels.npy",
+                "element_connectivity.npy",
+                "element_labels.npy",
+                "stl_vertex_normals.npy",
+                "stl_face_normals.npy",
+            ]:
+                assert os.path.exists(os.path.join(tmpdir, fname)), f"Missing file: {fname}"
