@@ -66,6 +66,9 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
+# np.trapz was deprecated in NumPy 1.25 (renamed to trapezoid) and removed in 2.0
+_trapz = getattr(np, "trapezoid", np.trapz)
+
 # ---------------------------------------------------------------------------
 # Import the single-shot analytical model
 # ---------------------------------------------------------------------------
@@ -841,7 +844,7 @@ def compute_physics_checkerboard(
         if depth_prof.shape[0] > 1:
             z_arr = depth_prof[:, 0]
             sR_arr = depth_prof[:, 1]
-            bm = float(np.trapz(sR_arr * z_arr, z_arr))
+            bm = float(_trapz(sR_arr * z_arr, z_arr))
         else:
             bm = 0.0
         bimoment_grid[row, col] += bm
@@ -1030,7 +1033,7 @@ def compute_cupping_from_profile(
     sR_t = sR[mask]
 
     # Bending moment per unit width (N/m)
-    M_b = float(np.trapz(sR_t * z_t, z_t))
+    M_b = float(_trapz(sR_t * z_t, z_t))
 
     # Plate second moment of area per unit width (m³)
     I_per_w = t_plate**3 / 12.0

@@ -1858,7 +1858,7 @@ def train_save_conv_gui(data_path, epochs=20, use_amp=None, accum_steps=None, us
         print("No GPU — training on CPU.")
 
     print("Loading data...")
-    train_loader, val_loader, _, grid_H, grid_W = create_field_data_loaders(
+    train_loader, val_loader, _, grid_H, grid_W, _, _ = create_field_data_loaders(
         data_path, load_material_features=use_material
     )
     _, G = infer_dataset_shape(data_path)  # checkerboard size

@@ -756,18 +756,18 @@ class TestInferGridShape:
 class TestCreateFieldDataLoaders:
     def test_returns_five_items(self, tiny_dataset):
         result = M.create_field_data_loaders(str(tiny_dataset))
-        assert len(result) == 5
+        assert len(result) == 7  # train, val, test, H, W, disp_scale, per_sim_scales
 
     def test_loaders_are_dataloaders(self, tiny_dataset):
         from torch.utils.data import DataLoader
 
-        train, val, test, H, W = M.create_field_data_loaders(str(tiny_dataset))
+        train, val, test, H, W, _, _ = M.create_field_data_loaders(str(tiny_dataset))
         assert isinstance(train, DataLoader)
         assert isinstance(val, DataLoader)
         assert isinstance(test, DataLoader)
 
     def test_field_batch_shapes(self, tiny_dataset):
-        train, _, _, H, W = M.create_field_data_loaders(str(tiny_dataset))
+        train, _, _, H, W, _, _ = M.create_field_data_loaders(str(tiny_dataset))
         cb, field = next(iter(train))
         assert cb.ndim == 4 and cb.shape[1] == 1
         assert field.shape[1] == 3 and field.shape[2] == H and field.shape[3] == W
