@@ -10,7 +10,7 @@ for _p in [str(_SRC), str(_HERE)]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import model as M
+import model as M  # noqa: E402
 from large_scale_train import train_standard, train_conv_decoder
 
 RUN_DIR = _HERE / "LargeScaleRun1"

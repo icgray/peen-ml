@@ -42,7 +42,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-import model as M
+import model as M  # noqa: E402
 from native_dataset_gen import GeneratorParams, generate_single_simulation
 from materials import WORKPIECE_MATERIALS, SHOT_MATERIALS
 

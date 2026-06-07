@@ -25,7 +25,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from helpers import SYN_G, SYN_NODES, SYN_SIMS, SAMPLE_DATASET, make_node_coords as _make_node_coords
 
-import model as M
+import model as M  # noqa: E402
 
 
 # ===========================================================================

@@ -26,7 +26,7 @@ import gc
 
 import numpy as np
 import torch
-import model as M
+import model as M  # noqa: E402
 
 
 def _flush_gpu():

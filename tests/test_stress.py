@@ -38,7 +38,7 @@ sys.path.insert(
     os.path.join(os.path.dirname(__file__), "..", "src", "peen-ml"),
 )
 
-import model as M
+import model as M  # noqa: E402
 from helpers import SYN_G, SYN_NODES, make_node_coords
 from materials import (
     WORKPIECE_MATERIALS,

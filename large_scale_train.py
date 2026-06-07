@@ -49,7 +49,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
-import model as M
+import model as M  # noqa: E402
 from native_dataset_gen import GeneratorParams, generate_single_simulation, generate_dataset
 from materials import WORKPIECE_MATERIALS, SHOT_MATERIALS
 

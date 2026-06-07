@@ -14,7 +14,7 @@ from scipy.stats import pearsonr
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(ROOT, "src", "peen-ml"))
-from model import sample_field_at_coords, infer_grid_shape
+from model import sample_field_at_coords, infer_grid_shape  # noqa: E402
 
 DATA = os.path.join(ROOT, "Dataset_bench_final")
 MDL = os.path.join(DATA, "saved_model_bench")

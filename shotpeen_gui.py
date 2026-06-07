@@ -42,7 +42,7 @@ from PIL import Image, ImageTk
 # Append src folder to path such that the called python files can be called.
 sys.path.append(os.path.join(os.path.dirname(__file__), "src", "peen-ml"))
 # Deviating from PEP8 to make sure that this script can call the backend
-from model import train_model, create_data_loaders, create_model  # pylint: disable=wrong-import-position
+from model import train_model, create_data_loaders, create_model  # noqa: E402  # pylint: disable=wrong-import-position
 from model import train_save_gui, infer_dataset_shape  # pylint: disable=wrong-import-position
 from model import train_save_conv_gui, train_save_siren_gui  # pylint: disable=wrong-import-position
 from model import load_and_evaluate_model_gui  # pylint: disable=wrong-import-position
