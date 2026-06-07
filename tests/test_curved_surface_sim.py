@@ -6,7 +6,6 @@ STL should produce displacement/stress magnitudes within 10% of multi_shot_sim
 for the same shot count and material parameters.
 """
 
-import math
 import os
 import struct
 import sys

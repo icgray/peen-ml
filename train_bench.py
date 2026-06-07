@@ -1,6 +1,8 @@
 """Train ConvDecoder on Dataset_bench_final and produce pred_vs_gt.png."""
 
-import sys, os, time
+import sys
+import os
+import time
 import numpy as np
 import torch
 import torch.nn as nn
@@ -195,9 +197,9 @@ print(f"Figure -> {out}")
 print()
 print("=" * 60)
 print("NUMBERS FOR paper.md:")
-print(f"  Dataset:   500 sims, 30x30 mesh (961 nodes), 10x10 checkerboard")
+print("  Dataset:   500 sims, 30x30 mesh (961 nodes), 10x10 checkerboard")
 print(f"  Train/Val/Test: {ntr}/{nva}/{nte}")
 print(f"  Test RMSE: {mean_rmse:.2f} um  (affected nodes >5pct of peak)")
 print(f"  Pearson r: {mean_r:.3f}")
-print(f"  Physics: Shen-Atluri model, steel shot, 300-1000 shots/sim")
+print("  Physics: Shen-Atluri model, steel shot, 300-1000 shots/sim")
 print("=" * 60)

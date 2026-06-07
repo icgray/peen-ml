@@ -26,9 +26,7 @@ Test categories:
 
 import os
 import sys
-import shutil
-from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -258,8 +256,6 @@ class TestBrowseFile:
 
     def test_sets_variable_on_selection(self, app):
         """One-shot: StringVar is updated with the chosen file path."""
-        import tkinter as tk  # noqa: PLC0415
-
         var = MagicMock()
         with patch("tkinter.filedialog.askopenfilename", return_value="/chosen/file.pth"):
             app.browse_file(var)

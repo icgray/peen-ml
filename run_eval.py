@@ -24,7 +24,6 @@ for _p in [str(_SRC), str(_HERE)]:
 
 import gc
 
-import numpy as np
 import torch
 import model as M  # noqa: E402
 
@@ -316,10 +315,10 @@ def main():
         _flush_gpu()
         cup_str = f"  cupping r={row['cupping_r']:.4f}" if "cupping_r" in row else ""
         print(
-            f"  ux r={row.get('ux_r','?'):.4f}  "
-            f"uy r={row.get('uy_r','?'):.4f}  "
-            f"uz r={row.get('uz_r','?'):.4f}  "
-            f"(n_ok={row.get('ux_n_ok',0)}){cup_str}"
+            f"  ux r={row.get('ux_r', '?'):.4f}  "
+            f"uy r={row.get('uy_r', '?'):.4f}  "
+            f"uz r={row.get('uz_r', '?'):.4f}  "
+            f"(n_ok={row.get('ux_n_ok', 0)}){cup_str}"
         )
 
     # ---- Cross-dataset evaluations ----
@@ -346,10 +345,10 @@ def main():
             rows.append(row)
             _flush_gpu()
             print(
-                f"  ux r={row.get('ux_r','?'):.4f}  "
-                f"uy r={row.get('uy_r','?'):.4f}  "
-                f"uz r={row.get('uz_r','?'):.4f}  "
-                f"(n_ok={row.get('ux_n_ok',0)})"
+                f"  ux r={row.get('ux_r', '?'):.4f}  "
+                f"uy r={row.get('uy_r', '?'):.4f}  "
+                f"uz r={row.get('uz_r', '?'):.4f}  "
+                f"(n_ok={row.get('ux_n_ok', 0)})"
             )
 
     # ---- Standalone cupping scatter (--cupping flag) ----
@@ -402,7 +401,7 @@ def main():
     # ---- Console summary ----
     print(f"\n{'='*90}")
     print(f"{'Label':<48} {'ux r':>7} {'ux rel%':>8} {'uy r':>7} {'uz r':>7} {'uz rel%':>8}")
-    print(f"  note: r = pattern correlation; rel RMSE% = RMSE / peak_gt (scale accuracy)")
+    print("  note: r = pattern correlation; rel RMSE% = RMSE / peak_gt (scale accuracy)")
     print(f"{'-'*90}")
     for r in rows:
         print(

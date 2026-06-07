@@ -17,7 +17,8 @@ import sys
 import numpy as np
 import pytest
 
-import sys as _sys, os as _os
+import sys as _sys
+import os as _os
 
 _sys.path.insert(0, _os.path.dirname(__file__))
 from helpers import SAMPLE_DATASET

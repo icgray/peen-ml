@@ -63,8 +63,8 @@ from __future__ import annotations
 import math
 import os
 import sys
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -77,7 +77,6 @@ from impact_sim import (
     compute_contact_params,
     compute_stress_field,
     compute_plastic_zone,
-    compute_energy_balance,
     map_displacements,
     map_stresses,
 )
@@ -387,7 +386,6 @@ def run_curved_surface_sim(params: CurvedSurfaceSimParams) -> Dict:
     # ------------------------------------------------------------------
     # Coverage and Almen intensity
     # ------------------------------------------------------------------
-    contact0 = compute_contact_params(base_sp)
     plastic0 = compute_plastic_zone(base_sp)
     coverage_info = compute_coverage(
         disp_f32,

@@ -46,7 +46,6 @@ from model import train_model, create_data_loaders, create_model  # noqa: E402  
 from model import train_save_gui, infer_dataset_shape  # pylint: disable=wrong-import-position
 from model import train_save_conv_gui, train_save_siren_gui  # pylint: disable=wrong-import-position
 from model import load_and_evaluate_model_gui  # pylint: disable=wrong-import-position
-from model import load_and_evaluate_siren_gui  # pylint: disable=wrong-import-position
 from model import curved_surface_inference  # pylint: disable=wrong-import-position
 from data_viz import visualize_checkerboard, visualize_all  # pylint: disable=wrong-import-position
 
@@ -1687,7 +1686,6 @@ class App:
 
         try:
             from materials import WORKPIECE_MATERIALS as _WPM, SHOT_MATERIALS as _SPM
-            from model import normalize_mat_features, MAT_FEATURE_KEYS
 
             _infer_wp_names = [""] + sorted(_WPM.keys())
             _infer_sp_names = [""] + sorted(_SPM.keys())
@@ -1728,7 +1726,7 @@ class App:
             try:
                 import numpy as _np
                 from materials import get_workpiece, get_shot
-                from model import normalize_mat_features as _norm, MAT_FEATURE_KEYS as _KEYS
+                from model import normalize_mat_features as _norm
 
                 wp = (
                     get_workpiece(wp_name) if wp_name else {"E": 113.8e9, "nu": 0.342, "sigma_yield": 880e6, "c": 3.0e9}
@@ -1897,8 +1895,6 @@ class App:
             mode = traj_mode_var.get()
             if stl:
                 # Curved-surface inference path
-                import threading
-
                 try:
                     from nozzle_trajectory import (
                         ScanParams,
@@ -1907,7 +1903,6 @@ class App:
                         zigzag_scan,
                         from_csv,
                         from_npy,
-                        NozzleTrajectory,
                     )
 
                     G = int(_cb_size_var.get())
@@ -1950,7 +1945,7 @@ class App:
                             traj_input = _np.zeros((G, G), dtype="float32")
                     else:
                         traj_input = traj
-                    out = curved_surface_inference(
+                    curved_surface_inference(
                         model_path=model_file_var.get(),
                         stl_path=stl,
                         trajectory_or_checkerboard=traj_input,
@@ -2003,7 +1998,8 @@ class App:
 
         # Button 3: 3D STL deformation preview (curved-surface path only)
         def _preview_stl():
-            import os as _os, numpy as _np
+            import os as _os
+            import numpy as _np
 
             out_dir = output_path_var.get().strip()
             stl = stl_file_var.get().strip()

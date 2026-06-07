@@ -273,8 +273,6 @@ def _poisson_disk(
 ) -> np.ndarray:
     """Bridson's algorithm for Poisson-disk sampling in a 2-D rectangle."""
     cell = min_dist / math.sqrt(2.0)
-    nx_grid = max(1, int(math.ceil(Lx / cell)))
-    ny_grid = max(1, int(math.ceil(Ly / cell)))
     grid: Dict[Tuple[int, int], np.ndarray] = {}
 
     def grid_coords(pt):
@@ -598,7 +596,6 @@ def run_multi_shot_simulation(
     # Compute one representative stress profile for depth superposition
     _log("[3/5] Computing representative stress depth profile ...")
     contact0 = compute_contact_params(bp)
-    sf0 = compute_stress_field(contact0, bp)
     plastic0 = compute_plastic_zone(bp)
 
     # ---- 4. Superpose impacts ----
@@ -610,7 +607,7 @@ def run_multi_shot_simulation(
 
     energy_list = []
     sR_profiles = []  # collect representative depth profiles
-    plastic_ref = plastic0  # use representative plastic zone for coverage
+    # plastic0 is the representative plastic zone for coverage (used via plastic0 below)
     per_shot_physics = []  # collect per-shot physics for physics checkerboard
 
     for i, (centre, V_i, D_i) in enumerate(zip(centres, V_vec, D_vec)):
@@ -1107,7 +1104,6 @@ def plot_results(results: Dict, show: bool = True, save_dir: Optional[str] = Non
       [3] Checkerboard shot-density map
     """
     import matplotlib.pyplot as plt
-    from matplotlib.colors import Normalize
 
     mesh = results["mesh"]
     coords = mesh["node_coords"]  # (N, 3)
@@ -1137,8 +1133,6 @@ def plot_results(results: Dict, show: bool = True, save_dir: Optional[str] = Non
     uz_surf = disp[surf_mask, 2]
 
     G_heat = 80
-    x_edges = np.linspace(0, Lx, G_heat + 1)
-    y_edges = np.linspace(0, Ly, G_heat + 1)
     heat = np.zeros((G_heat, G_heat))
     cnt = np.zeros((G_heat, G_heat), dtype=int)
     for x, y, u in zip(xs_surf, ys_surf, uz_surf):

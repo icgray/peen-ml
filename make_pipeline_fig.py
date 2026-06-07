@@ -5,8 +5,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
+from matplotlib.patches import FancyBboxPatch
 
 # ── layout constants ────────────────────────────────────────────────────────
 FIG_W, FIG_H = 14, 4.6

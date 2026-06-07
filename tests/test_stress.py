@@ -39,7 +39,7 @@ sys.path.insert(
 )
 
 import model as M  # noqa: E402
-from helpers import SYN_G, SYN_NODES, make_node_coords
+from helpers import make_node_coords
 from materials import (
     WORKPIECE_MATERIALS,
     SHOT_MATERIALS,
@@ -347,7 +347,6 @@ class TestDegenerateDatasetSplit:
         accessing base_dataset[0].  The val_loader will be empty but no
         IndexError is raised.
         """
-        rng = np.random.default_rng(n_sims)
         root = _make_synthetic_dataset(
             tmp_path / f"ds_{n_sims}",
             "Ti-6Al-4V",
@@ -356,7 +355,7 @@ class TestDegenerateDatasetSplit:
             write_params=False,
         )
         # create_data_loaders now succeeds — val_loader may be empty but no crash
-        train_loader, val_loader, test_loader, _ = M.create_data_loaders(str(root), batch_size=4)
+        train_loader, val_loader, _test_loader, _ = M.create_data_loaders(str(root), batch_size=4)
         assert len(train_loader) >= 0  # no crash is the key assertion
         # Callers should check len(val_loader) == 0 before training
         if n_sims < 7:
@@ -371,7 +370,7 @@ class TestDegenerateDatasetSplit:
             n_sims=7,
             write_params=False,
         )
-        train_loader, val_loader, test_loader, _ = M.create_data_loaders(str(root), batch_size=4)
+        _train_loader, val_loader, test_loader, _ = M.create_data_loaders(str(root), batch_size=4)
         assert len(val_loader) > 0, "With n_sims=7 the val split should be non-empty"
         assert len(test_loader) > 0
 
@@ -917,7 +916,6 @@ class TestNormalizationStatsRoundTrip:
     def test_normalization_preserves_relative_order(self, tmp_path):
         """After normalization, the relative ordering of checkerboard values is preserved."""
         rng = np.random.default_rng(0)
-        n_nodes = 121
         root = _make_synthetic_dataset(
             tmp_path,
             "Ti-6Al-4V",
