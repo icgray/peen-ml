@@ -39,6 +39,8 @@ Usage
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import math
 import os
 import sys
@@ -51,6 +53,18 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import pearsonr
+
+
+@contextlib.contextmanager
+def _redirect_stdout(buf: io.StringIO):
+    """Context manager that redirects sys.stdout to *buf* for its duration."""
+    old = sys.stdout
+    sys.stdout = buf
+    try:
+        yield buf
+    finally:
+        sys.stdout = old
+
 
 # ---------------------------------------------------------------------------
 # Path setup
@@ -381,9 +395,18 @@ def _metrics(pred: np.ndarray, gt: np.ndarray, comp: int, frac: float = 0.05) ->
     mask = np.abs(g) > thresh
     if mask.sum() < 2:
         return {"r": float("nan"), "rmse_um": float("nan"), "n": 0}
-    r, _ = pearsonr(p[mask], g[mask])
+    # pearsonr raises ConstantInputWarning when one array has zero variance
+    # (e.g. Sherafatnia predicts zero uz for very low-velocity impacts).
+    # We catch it and return nan rather than let the warning leak to the terminal.
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        r_val, _ = pearsonr(p[mask], g[mask])
+    if not math.isfinite(r_val):
+        r_val = float("nan")
     rmse = float(np.sqrt(np.mean((p[mask] - g[mask]) ** 2))) * 1e6
-    return {"r": float(r), "rmse_um": rmse, "n": int(mask.sum())}
+    return {"r": float(r_val), "rmse_um": rmse, "n": int(mask.sum())}
 
 
 def compare_to_dataset(

@@ -713,10 +713,15 @@ class App:
                         fig_path = tmp.name
                         tmp.close()
 
-                        results = _am.compare_to_dataset(sim_dir, out_path=fig_path, sequential=sequential)
+                        import io
 
-                        # Build metrics text
-                        lines = [f"{'Model':<14s}  {'comp':>4s}  {'r':>7s}  {'RMSE µm':>8s}  {'n nodes':>8s}"]
+                        buf = io.StringIO()
+                        with _am._redirect_stdout(buf):
+                            results = _am.compare_to_dataset(sim_dir, out_path=fig_path, sequential=sequential)
+
+                        # Build metrics text (structured table + any captured print output)
+                        lines = ["Per-simulation detail:", buf.getvalue().strip(), ""]
+                        lines += [f"{'Model':<14s}  {'comp':>4s}  {'r':>7s}  {'RMSE um':>8s}  {'n nodes':>8s}"]
                         lines.append("-" * 52)
                         for model in ("shen_atluri", "sherafatnia"):
                             for comp in ("ux", "uy", "uz"):
@@ -730,30 +735,24 @@ class App:
                         dialog.after(0, lambda: _show_image(fig_path))
 
                     else:
+                        import io
+
                         n_sims = int(batch_n_var.get())
                         tmp_csv = tempfile.NamedTemporaryFile(suffix=".csv", delete=False)
                         tmp_csv_path = tmp_csv.name
                         tmp_csv.close()
 
-                        rows = _am.compare_dataset(
-                            dataset_dir,
-                            n_sims=n_sims,
-                            sequential=sequential,
-                            out_csv=tmp_csv_path,
-                            verbose=True,
-                        )
-
-                        # Show summary text in metrics box
-                        import io
-                        import sys as _sys
-
+                        # Capture ALL output (per-sim lines + summary) into GUI
                         buf = io.StringIO()
-                        old_stdout = _sys.stdout
-                        _sys.stdout = buf
-                        try:
-                            _am._print_summary(rows)
-                        finally:
-                            _sys.stdout = old_stdout
+                        with _am._redirect_stdout(buf):
+                            _am.compare_dataset(
+                                dataset_dir,
+                                n_sims=n_sims,
+                                sequential=sequential,
+                                out_csv=tmp_csv_path,
+                                verbose=True,
+                            )
+
                         metrics_text = buf.getvalue()
                         dialog.after(0, lambda: _write_metrics(metrics_text))
 
