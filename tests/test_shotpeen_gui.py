@@ -55,8 +55,10 @@ def app():
     The mock root supports winfo_children(), title(), geometry() and
     after() so that App.__init__ completes without error.
     """
-    with patch("tkinter.Tk") as mock_tk_class, patch("PIL.Image.open") as mock_img_open, patch(
-        "PIL.ImageTk.PhotoImage"
+    with (
+        patch("tkinter.Tk") as mock_tk_class,
+        patch("PIL.Image.open") as mock_img_open,
+        patch("PIL.ImageTk.PhotoImage"),
     ):
 
         # Configure the mock root window
@@ -125,8 +127,10 @@ class TestAppInitialisation:
 
     def test_missing_bullet_bill_raises_file_not_found(self):
         """Edge: if the splash image is absent, a FileNotFoundError is raised."""
-        with patch("tkinter.Tk"), patch("PIL.Image.open", side_effect=FileNotFoundError("not found")), patch(
-            "PIL.ImageTk.PhotoImage"
+        with (
+            patch("tkinter.Tk"),
+            patch("PIL.Image.open", side_effect=FileNotFoundError("not found")),
+            patch("PIL.ImageTk.PhotoImage"),
         ):
             from shotpeen_gui import App  # noqa: PLC0415
 
@@ -322,8 +326,9 @@ class TestTrainModel:
     def test_existing_directory_does_not_show_error(self, app, tmp_path):
         """One-shot: with a valid directory, showerror is NOT called immediately."""
         # The actual training call will fail (no data), so we also mock it out
-        with patch("tkinter.messagebox.showerror") as mock_err, patch(
-            "shotpeen_gui.create_data_loaders", side_effect=Exception("no data")
+        with (
+            patch("tkinter.messagebox.showerror") as mock_err,
+            patch("shotpeen_gui.create_data_loaders", side_effect=Exception("no data")),
         ):
             try:
                 app.train_model(str(tmp_path))
