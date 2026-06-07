@@ -66,8 +66,11 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-# np.trapz was deprecated in NumPy 1.25 (renamed to trapezoid) and removed in 2.0
-_trapz = getattr(np, "trapezoid", np.trapz)
+# np.trapz removed in NumPy 2.0 (renamed to trapezoid in 1.25)
+try:
+    _trapz = np.trapezoid  # NumPy >= 1.25
+except AttributeError:
+    _trapz = np.trapz  # NumPy < 1.25
 
 # ---------------------------------------------------------------------------
 # Import the single-shot analytical model
