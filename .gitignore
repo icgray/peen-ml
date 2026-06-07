@@ -86,3 +86,7 @@ Dataset_small/
 Test_part*/
 *.pth
 Dataset_Python/
+
+# Generated paper PDF (JOSS builds this from paper.md; don't track the binary)
+paper.pdf
+*_train_log*.txt
