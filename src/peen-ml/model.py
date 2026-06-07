@@ -858,15 +858,11 @@ def create_multitask_data_loaders(
 
 def _parse_mat_features(params_path: str) -> np.ndarray:
     """Parse material feature vector from simulation_params.txt."""
-    if not os.path.exists(params_path):
+    sim_dir = os.path.dirname(params_path)
+    mat_dict = _parse_material_block(sim_dir)
+    if mat_dict is None:
         return np.zeros(MAT_DIM, dtype=np.float32)
-    try:
-        with open(params_path) as fh:
-            text = fh.read()
-        result = _extract_material_features_from_text(text)
-        return np.asarray(result, dtype=np.float32)
-    except Exception:
-        return np.zeros(MAT_DIM, dtype=np.float32)
+    return np.array([mat_dict[k] for k in MAT_FEATURE_KEYS], dtype=np.float32)
 
 
 def train_model_multitask(
